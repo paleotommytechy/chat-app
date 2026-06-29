@@ -1,0 +1,4 @@
+module.exports = {
+  TYPING_DEBOUNCE_MS: 300,
+  TYPING_TIMEOUT_MS: 2000
+};
