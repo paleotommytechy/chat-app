@@ -27,13 +27,17 @@ export default defineSchema({
   messages: defineTable({
     sender: v.string(),
     senderUserId: v.optional(v.id("users")),
-    kind: v.union(v.literal("text"), v.literal("file")),
+    channel: v.optional(
+      v.union(v.literal("general"), v.literal("screenshots"), v.literal("files")),
+    ),
+    kind: v.union(v.literal("text"), v.literal("file"), v.literal("voice")),
     text: v.optional(v.string()),
     storageId: v.optional(v.id("_storage")),
     fileName: v.optional(v.string()),
     fileSize: v.optional(v.number()),
     mimeType: v.optional(v.string()),
     encrypted: v.optional(v.boolean()),
+    durationMs: v.optional(v.number()),
     createdAt: v.number(),
   }).index("by_createdAt", ["createdAt"]),
 });
