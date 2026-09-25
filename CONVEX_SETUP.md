@@ -36,7 +36,7 @@ Open http://localhost:3000.
 
 ## 5. Deploy to Vercel
 
-Import this GitHub repository into Vercel. Add a production Convex deploy key as `CONVEX_DEPLOY_KEY` in Vercel project environment variables. The included `vercel-build` script deploys Convex functions first and then builds Next.js.
+Import this GitHub repository into Vercel. Add a production Convex deploy key as `CONVEX_DEPLOY_KEY` in Vercel project environment variables. The included `vercel-build` script supplies `NEXT_PUBLIC_CONVEX_URL` to Next.js explicitly, builds the frontend, and deploys the Convex functions.
 
 For the production Convex deployment, also set `WORKSPACE_ACCESS_CODE` in Convex's production environment.
 
