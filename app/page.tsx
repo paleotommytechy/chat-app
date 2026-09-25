@@ -1,5 +1,5 @@
-import { DevCache } from "@/components/FriendSpace";
+import { Syncret } from "@/components/FriendSpace";
 
 export default function Home() {
-  return <DevCache />;
+  return <Syncret />;
 }
