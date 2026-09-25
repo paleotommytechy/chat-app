@@ -94,7 +94,7 @@ function supportedAudioMimeType() {
   return candidates.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
 }
 
-export function DevCache() {
+export function Syncret() {
   const signup = useMutation(api.auth.signup);
   const login = useMutation(api.auth.login);
   const logoutMutation = useMutation(api.auth.logout);
@@ -134,18 +134,33 @@ export function DevCache() {
   const discardRecordingRef = useRef(false);
 
   useEffect(() => {
-    const local = window.localStorage.getItem("devcache-session-token");
-    const sessionOnly = window.sessionStorage.getItem("devcache-session-token");
-    const legacy = window.localStorage.getItem("friendspace-session-token");
-    const saved = local ?? sessionOnly ?? legacy;
+    const local = window.localStorage.getItem("syncret-session-token");
+    const sessionOnly = window.sessionStorage.getItem("syncret-session-token");
+    const legacyDevCacheLocal = window.localStorage.getItem("devcache-session-token");
+    const legacyDevCacheSession = window.sessionStorage.getItem("devcache-session-token");
+    const legacyFriendSpace = window.localStorage.getItem("friendspace-session-token");
+    const saved =
+      local ??
+      sessionOnly ??
+      legacyDevCacheLocal ??
+      legacyDevCacheSession ??
+      legacyFriendSpace;
 
-    if (saved) {
-      setToken(saved);
-      if (legacy && !local) {
-        window.localStorage.setItem("devcache-session-token", legacy);
-        window.localStorage.removeItem("friendspace-session-token");
+    if (!saved) return;
+
+    setToken(saved);
+
+    if (!local && !sessionOnly) {
+      if (legacyDevCacheSession) {
+        window.sessionStorage.setItem("syncret-session-token", saved);
+      } else {
+        window.localStorage.setItem("syncret-session-token", saved);
       }
     }
+
+    window.localStorage.removeItem("devcache-session-token");
+    window.sessionStorage.removeItem("devcache-session-token");
+    window.localStorage.removeItem("friendspace-session-token");
   }, []);
 
   const session = useQuery(api.auth.session, token ? { token } : "skip");
@@ -196,10 +211,10 @@ export function DevCache() {
         await login({ email, password, token: nextToken });
       }
 
-      window.localStorage.removeItem("devcache-session-token");
-      window.sessionStorage.removeItem("devcache-session-token");
+      window.localStorage.removeItem("syncret-session-token");
+      window.sessionStorage.removeItem("syncret-session-token");
       const storage = rememberMe ? window.localStorage : window.sessionStorage;
-      storage.setItem("devcache-session-token", nextToken);
+      storage.setItem("syncret-session-token", nextToken);
       setToken(nextToken);
       setPassword("");
     } catch (error) {
@@ -220,6 +235,8 @@ export function DevCache() {
       }
     }
 
+    window.localStorage.removeItem("syncret-session-token");
+    window.sessionStorage.removeItem("syncret-session-token");
     window.localStorage.removeItem("devcache-session-token");
     window.sessionStorage.removeItem("devcache-session-token");
     window.localStorage.removeItem("friendspace-session-token");
@@ -526,25 +543,25 @@ export function DevCache() {
     const signingUp = authMode === "signup";
 
     return (
-      <main className="login-shell devcache-auth">
+      <main className="login-shell syncret-auth">
         <div className="auth-orb auth-orb-one" aria-hidden="true" />
         <div className="auth-orb auth-orb-two" aria-hidden="true" />
         <div className="auth-orb auth-orb-three" aria-hidden="true" />
 
-        <section className="login-card devcache-login-card">
-          <div className="devcache-logo-wrap">
+        <section className="login-card syncret-login-card">
+          <div className="syncret-logo-wrap">
             <Image
-              src="/devcache-logo.svg"
-              alt="DevCache encrypted developer workspace"
+              src="/syncret-logo.svg"
+              alt="Syncret encrypted developer workspace"
               width={142}
               height={142}
               priority
-              className="devcache-logo"
+              className="syncret-logo"
             />
           </div>
 
-          <div className="devcache-wordmark" aria-label="DevCache">
-            <span>Dev</span><strong>Cache</strong>
+          <div className="syncret-wordmark" aria-label="Syncret">
+            <span>Syn</span><strong>cret</strong>
           </div>
 
           <div className="login-copy">
@@ -639,7 +656,7 @@ export function DevCache() {
             <span />
           </div>
 
-          <div className="login-footnote devcache-footnote">
+          <div className="login-footnote syncret-footnote">
             <ShieldCheck size={18} />
             <div>
               <strong>Secure collaboration for developers</strong>
@@ -655,9 +672,9 @@ export function DevCache() {
     return (
       <main className="loading-screen">
         <div className="pulse-logo">
-          <Image src="/devcache-logo.svg" alt="" width={38} height={38} />
+          <Image src="/syncret-logo.svg" alt="" width={38} height={38} />
         </div>
-        <p>Opening DevCache…</p>
+        <p>Opening Syncret…</p>
       </main>
     );
   }
@@ -713,15 +730,15 @@ export function DevCache() {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <span className="brand-mark small">
-            <Image src="/devcache-logo.svg" alt="" width={30} height={30} />
+            <Image src="/syncret-logo.svg" alt="" width={30} height={30} />
           </span>
           <div>
-            <strong>DevCache</strong>
+            <strong>Syncret</strong>
             <small>private workspace</small>
           </div>
         </div>
 
-        <nav className="nav-group" aria-label="DevCache spaces">
+        <nav className="nav-group" aria-label="Syncret spaces">
           <span className="nav-label">Spaces</span>
           <button
             className={channel === "general" ? "active" : ""}
