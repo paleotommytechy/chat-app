@@ -1,4 +1,4 @@
-import { Syncret } from "@/components/FriendSpace";
+import { Syncret } from "@/components/Syncret";
 
 export default function Home() {
   return <Syncret />;
