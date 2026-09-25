@@ -2,17 +2,23 @@
 
 import Image from "next/image";
 import {
+  ArrowRight,
+  Check,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   Hash,
   Image as ImageIcon,
   LockKeyhole,
   LogOut,
+  Mail,
   Paperclip,
   Send,
   ShieldCheck,
   Sparkles,
   UploadCloud,
+  UserRound,
   Users,
   X,
 } from "lucide-react";
@@ -50,7 +56,7 @@ function formatBytes(bytes = 0) {
 }
 
 function formatTime(timestamp: number) {
-  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(timestamp);
+  return new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" }).format(timestamp);
 }
 
 function initials(name: string) {
@@ -65,7 +71,7 @@ function isImageMessage(message: Message) {
   return Boolean(message.mimeType?.startsWith("image/") && !message.encrypted);
 }
 
-export function FriendSpace() {
+export function DevCache() {
   const signup = useMutation(api.auth.signup);
   const login = useMutation(api.auth.login);
   const logoutMutation = useMutation(api.auth.logout);
@@ -78,6 +84,8 @@ export function FriendSpace() {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [loginError, setLoginError] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [text, setText] = useState("");
@@ -90,8 +98,18 @@ export function FriendSpace() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("friendspace-session-token");
-    if (saved) setToken(saved);
+    const local = window.localStorage.getItem("devcache-session-token");
+    const sessionOnly = window.sessionStorage.getItem("devcache-session-token");
+    const legacy = window.localStorage.getItem("friendspace-session-token");
+    const saved = local ?? sessionOnly ?? legacy;
+
+    if (saved) {
+      setToken(saved);
+      if (legacy && !local) {
+        window.localStorage.setItem("devcache-session-token", legacy);
+        window.localStorage.removeItem("friendspace-session-token");
+      }
+    }
   }, []);
 
   const session = useQuery(api.auth.session, token ? { token } : "skip");
@@ -120,7 +138,10 @@ export function FriendSpace() {
       } else {
         await login({ email, password, token: nextToken });
       }
-      window.localStorage.setItem("friendspace-session-token", nextToken);
+      window.localStorage.removeItem("devcache-session-token");
+      window.sessionStorage.removeItem("devcache-session-token");
+      const storage = rememberMe ? window.localStorage : window.sessionStorage;
+      storage.setItem("devcache-session-token", nextToken);
       setToken(nextToken);
       setPassword("");
     } catch (error) {
@@ -138,6 +159,8 @@ export function FriendSpace() {
         // Local sign-out still proceeds if the network is unavailable.
       }
     }
+    window.localStorage.removeItem("devcache-session-token");
+    window.sessionStorage.removeItem("devcache-session-token");
     window.localStorage.removeItem("friendspace-session-token");
     setToken(null);
   }
@@ -250,55 +273,136 @@ export function FriendSpace() {
   }
 
   if (!token || session === null) {
+    const signingUp = authMode === "signup";
+
     return (
-      <main className="login-shell">
-        <div className="ambient ambient-one" />
-        <div className="ambient ambient-two" />
-        <section className="login-card">
-          <div className="login-brand">
-            <div className="brand-mark">F</div>
-            <div>
-              <span>FRIENDSPACE</span>
-              <small>Private by design</small>
-            </div>
+      <main className="login-shell devcache-auth">
+        <div className="auth-orb auth-orb-one" aria-hidden="true" />
+        <div className="auth-orb auth-orb-two" aria-hidden="true" />
+        <div className="auth-orb auth-orb-three" aria-hidden="true" />
+
+        <section className="login-card devcache-login-card">
+          <div className="devcache-logo-wrap">
+            <Image
+              src="/devcache-logo.svg"
+              alt="DevCache encrypted developer workspace"
+              width={142}
+              height={142}
+              priority
+              className="devcache-logo"
+            />
           </div>
+
+          <div className="devcache-wordmark" aria-label="DevCache">
+            <span>Dev</span><strong>Cache</strong>
+          </div>
+
           <div className="login-copy">
-            <span className="eyebrow"><ShieldCheck size={14} /> Shared workspace</span>
-            <h1>One quiet place for the group.</h1>
-            <p>Chat in real time, paste screenshots, share files, and send encrypted <code>.env</code> files without turning your project secrets into public links.</p>
+            <h1>{signingUp ? "Create Account" : "Welcome Back"}</h1>
+            <p>{signingUp ? "Create your private developer workspace" : "Sign in to continue"}</p>
           </div>
-          <div className="auth-switch">
-            <button type="button" className={authMode === "signin" ? "active" : ""} onClick={() => { setAuthMode("signin"); setLoginError(""); }}>Sign in</button>
-            <button type="button" className={authMode === "signup" ? "active" : ""} onClick={() => { setAuthMode("signup"); setLoginError(""); }}>Create account</button>
-          </div>
-          <form className="login-form" onSubmit={handleLogin}>
-            {authMode === "signup" && (
-              <label>
-                Your name
-                <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Ifeoluwa" autoComplete="name" required />
+
+          <form className="login-form neo-login-form" onSubmit={handleLogin}>
+            {signingUp && (
+              <label className="neo-field">
+                <UserRound size={21} />
+                <input
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="Your name"
+                  autoComplete="name"
+                  required
+                />
               </label>
             )}
-            <label>
-              Email address
-              <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" autoComplete="email" required />
+
+            <label className="neo-field">
+              <Mail size={21} />
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                placeholder="Email"
+                autoComplete="email"
+                required
+              />
             </label>
-            <label>
-              Password
-              <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder={authMode === "signup" ? "At least 8 characters" : "Your password"} autoComplete={authMode === "signup" ? "new-password" : "current-password"} minLength={8} required />
+
+            <label className="neo-field">
+              <LockKeyhole size={21} />
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type={showPassword ? "text" : "password"}
+                placeholder={signingUp ? "Password · at least 8 characters" : "Password"}
+                autoComplete={signingUp ? "new-password" : "current-password"}
+                minLength={8}
+                required
+              />
+              <button
+                type="button"
+                className="password-toggle"
+                onClick={() => setShowPassword((value) => !value)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
             </label>
+
+            {!signingUp && (
+              <label className="remember-row">
+                <button
+                  type="button"
+                  className={`remember-box ${rememberMe ? "checked" : ""}`}
+                  onClick={() => setRememberMe((value) => !value)}
+                  aria-pressed={rememberMe}
+                >
+                  {rememberMe && <Check size={16} strokeWidth={3} />}
+                </button>
+                <span>Remember Me</span>
+              </label>
+            )}
+
             {loginError && <div className="error-note">{loginError}</div>}
-            <button className="primary-button" type="submit" disabled={isLoggingIn}>
-              {isLoggingIn ? "Please wait…" : authMode === "signup" ? "Create account" : "Sign in"}
+
+            <button className="primary-button neo-primary-button" type="submit" disabled={isLoggingIn}>
+              <span>{isLoggingIn ? "Please wait…" : signingUp ? "Create Account" : "Login"}</span>
+              <span className="login-arrow"><ArrowRight size={22} /></span>
             </button>
           </form>
-          <div className="login-footnote"><LockKeyhole size={14} /> Accounts and sessions are stored in your private Convex backend.</div>
+
+          <div className="auth-alternative">
+            <span />
+            <p>
+              {signingUp ? "Already have an account?" : "New here?"}
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode(signingUp ? "signin" : "signup");
+                  setLoginError("");
+                  setPassword("");
+                }}
+              >
+                {signingUp ? "Sign in" : "Create an account"}
+              </button>
+            </p>
+            <span />
+          </div>
+
+          <div className="login-footnote devcache-footnote">
+            <ShieldCheck size={18} />
+            <div>
+              <strong>Secure collaboration for developers</strong>
+              <span>Share messages, screenshots and encrypted files safely together.</span>
+            </div>
+          </div>
         </section>
       </main>
     );
   }
 
   if (session === undefined) {
-    return <main className="loading-screen"><div className="pulse-logo">F</div><p>Opening FriendSpace…</p></main>;
+    return <main className="loading-screen"><div className="pulse-logo"><Image src="/devcache-logo.svg" alt="" width={38} height={38} /></div><p>Opening DevCache…</p></main>;
   }
 
   const currentName = session.displayName;
@@ -313,7 +417,7 @@ export function FriendSpace() {
       {dragging && <div className="drop-overlay"><UploadCloud size={34} /><strong>Drop to share</strong><span>Up to 25 MB</span></div>}
 
       <aside className="sidebar">
-        <div className="sidebar-brand"><span className="brand-mark small">F</span><div><strong>FriendSpace</strong><small>private workspace</small></div></div>
+        <div className="sidebar-brand"><span className="brand-mark small"><Image src="/devcache-logo.svg" alt="" width={30} height={30} /></span><div><strong>DevCache</strong><small>private workspace</small></div></div>
 
         <nav className="nav-group" aria-label="Message filters">
           <span className="nav-label">Workspace</span>
