@@ -66,6 +66,7 @@ function isImageMessage(message: Message) {
 }
 
 export function FriendSpace() {
+  const signup = useMutation(api.auth.signup);
   const login = useMutation(api.auth.login);
   const logoutMutation = useMutation(api.auth.logout);
   const sendText = useMutation(api.messages.sendText);
@@ -73,8 +74,10 @@ export function FriendSpace() {
   const sendFile = useMutation(api.messages.sendFile);
 
   const [token, setToken] = useState<string | null>(null);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [displayName, setDisplayName] = useState("");
-  const [accessCode, setAccessCode] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [text, setText] = useState("");
@@ -93,6 +96,7 @@ export function FriendSpace() {
 
   const session = useQuery(api.auth.session, token ? { token } : "skip");
   const messages = useQuery(api.messages.list, token && session ? { token } : "skip") as Message[] | undefined;
+  const fileEncryptionKey = useQuery(api.auth.fileEncryptionKey, token && session ? { token } : "skip") as string | null | undefined;
 
   useEffect(() => {
     if (messages?.length) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -111,13 +115,16 @@ export function FriendSpace() {
     setIsLoggingIn(true);
     try {
       const nextToken = makeSessionToken();
-      await login({ displayName, accessCode, token: nextToken });
+      if (authMode === "signup") {
+        await signup({ displayName, email, password, token: nextToken });
+      } else {
+        await login({ email, password, token: nextToken });
+      }
       window.localStorage.setItem("friendspace-session-token", nextToken);
-      window.sessionStorage.setItem("friendspace-access-code", accessCode);
       setToken(nextToken);
-      setAccessCode("");
+      setPassword("");
     } catch (error) {
-      setLoginError(error instanceof Error ? error.message : "Could not join the workspace.");
+      setLoginError(error instanceof Error ? error.message : "Could not sign in.");
     } finally {
       setIsLoggingIn(false);
     }
@@ -132,7 +139,6 @@ export function FriendSpace() {
       }
     }
     window.localStorage.removeItem("friendspace-session-token");
-    window.sessionStorage.removeItem("friendspace-access-code");
     setToken(null);
   }
 
@@ -169,9 +175,8 @@ export function FriendSpace() {
       let uploadBody: Blob | File = file;
 
       if (encrypted) {
-        const code = window.sessionStorage.getItem("friendspace-access-code");
-        if (!code) throw new Error("Re-enter the workspace to unlock encrypted .env sharing.");
-        uploadBody = await encryptSensitiveFile(file, code);
+        if (!fileEncryptionKey) throw new Error("Encrypted .env sharing is not configured yet.");
+        uploadBody = await encryptSensitiveFile(file, fileEncryptionKey);
       }
 
       const uploadUrl = await generateUploadUrl({ token });
@@ -212,9 +217,8 @@ export function FriendSpace() {
       let blob = new Blob([payload], { type: message.mimeType || "application/octet-stream" });
 
       if (message.encrypted) {
-        const code = window.sessionStorage.getItem("friendspace-access-code");
-        if (!code) throw new Error("Sign in again to decrypt this .env file.");
-        blob = await decryptSensitiveFile(payload, code, message.mimeType || "text/plain");
+        if (!fileEncryptionKey) throw new Error("Encrypted .env sharing is not configured yet.");
+        blob = await decryptSensitiveFile(payload, fileEncryptionKey, message.mimeType || "text/plain");
       }
 
       const url = URL.createObjectURL(blob);
@@ -263,21 +267,31 @@ export function FriendSpace() {
             <h1>One quiet place for the group.</h1>
             <p>Chat in real time, paste screenshots, share files, and send encrypted <code>.env</code> files without turning your project secrets into public links.</p>
           </div>
+          <div className="auth-switch">
+            <button type="button" className={authMode === "signin" ? "active" : ""} onClick={() => { setAuthMode("signin"); setLoginError(""); }}>Sign in</button>
+            <button type="button" className={authMode === "signup" ? "active" : ""} onClick={() => { setAuthMode("signup"); setLoginError(""); }}>Create account</button>
+          </div>
           <form className="login-form" onSubmit={handleLogin}>
+            {authMode === "signup" && (
+              <label>
+                Your name
+                <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Ifeoluwa" autoComplete="name" required />
+              </label>
+            )}
             <label>
-              Your name
-              <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Ifeoluwa" autoComplete="name" required />
+              Email address
+              <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com" autoComplete="email" required />
             </label>
             <label>
-              Workspace access code
-              <input value={accessCode} onChange={(e) => setAccessCode(e.target.value)} type="password" placeholder="Shared privately with the group" autoComplete="current-password" required />
+              Password
+              <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder={authMode === "signup" ? "At least 8 characters" : "Your password"} autoComplete={authMode === "signup" ? "new-password" : "current-password"} minLength={8} required />
             </label>
             {loginError && <div className="error-note">{loginError}</div>}
             <button className="primary-button" type="submit" disabled={isLoggingIn}>
-              {isLoggingIn ? "Opening workspace…" : "Enter FriendSpace"}
+              {isLoggingIn ? "Please wait…" : authMode === "signup" ? "Create account" : "Sign in"}
             </button>
           </form>
-          <div className="login-footnote"><LockKeyhole size={14} /> The access code is checked by Convex and never committed to GitHub.</div>
+          <div className="login-footnote"><LockKeyhole size={14} /> Accounts and sessions are stored in your private Convex backend.</div>
         </section>
       </main>
     );
