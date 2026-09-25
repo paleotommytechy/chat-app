@@ -1,13 +1,13 @@
-# DevCache
+# Syncret
 
-DevCache is a small private realtime workspace for developers to communicate without mixing chat, screenshots, and project files together.
+Syncret is a small private realtime workspace for developers to communicate without mixing chat, screenshots, and project files together.
 
 ## Stack
 
 - Next.js 16 + React 19
-- Convex for realtime data, user accounts, sessions, file storage, and ownership checks
-- Vercel hosting
+- Convex for realtime data, user accounts, sessions, file storage, voice notes, and ownership checks
 - Web Crypto API for client-side AES-GCM encryption of sensitive environment files
+- Vercel-compatible frontend deployment
 
 ## Spaces
 
@@ -40,6 +40,20 @@ DevCache is a small private realtime workspace for developers to communicate wit
 - Persistent or session-only login with Remember Me
 - Responsive desktop/mobile interface
 
+## Environment variables
+
+Syncret expects this frontend environment variable:
+
+```env
+NEXT_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
+```
+
+For local development, `npx convex dev` normally writes this value into `.env.local`.
+
+For a Vercel deployment, add `NEXT_PUBLIC_CONVEX_URL` in the Vercel project's Environment Variables settings. Use the Convex deployment URL you want that Vercel environment to talk to.
+
+No workspace encryption secret is required in Vercel: Syncret provisions and stores the shared file-encryption key inside the authenticated Convex backend.
+
 ## Local development
 
 Run Convex in one terminal:
@@ -56,6 +70,10 @@ npm run dev -- -p 3002
 
 Then open `http://localhost:3002`.
 
-Voice recording requires microphone permission. It works on secure origins such as Vercel HTTPS and on `localhost`.
+Voice recording requires microphone permission. It works on secure origins such as HTTPS and on `localhost`.
+
+## Deployment workflow
+
+Changes are pushed to GitHub `main`. Deploy the frontend from GitHub using your own Vercel project. The assistant does not deploy Syncret directly to Vercel.
 
 > For highly sensitive production credentials, a dedicated secrets manager is still safer than sharing credentials through any chat application.
