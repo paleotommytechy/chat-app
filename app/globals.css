@@ -35,6 +35,8 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
 
 .devcache-auth {
   color-scheme: light;
+  overflow-x: hidden;
+  overflow-y: auto;
   color: #0b1a43;
   background:
     radial-gradient(circle at 50% 19%, rgba(255,255,255,.96) 0 8%, transparent 35%),
