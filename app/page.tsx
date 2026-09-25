@@ -1,5 +1,5 @@
-import { FriendSpace } from "@/components/FriendSpace";
+import { DevCache } from "@/components/FriendSpace";
 
 export default function Home() {
-  return <FriendSpace />;
+  return <DevCache />;
 }
