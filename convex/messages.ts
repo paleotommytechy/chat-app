@@ -3,16 +3,45 @@ import { mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import { requireSession } from "./auth";
 
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_SCREENSHOT_BYTES = 8 * 1024 * 1024;
+const MAX_VOICE_BYTES = 6 * 1024 * 1024;
+const MAX_VOICE_DURATION_MS = 5 * 60 * 1000;
+
+const channelValidator = v.union(
+  v.literal("general"),
+  v.literal("screenshots"),
+  v.literal("files"),
+);
+
+function effectiveChannel(message: any) {
+  if (message.channel) return message.channel;
+  if (message.kind === "text" || message.kind === "voice") return "general";
+  if (message.mimeType?.startsWith("image/")) return "screenshots";
+  return "files";
+}
+
 export const list = queryGeneric({
-  args: { token: v.string() },
+  args: { token: v.string(), channel: channelValidator },
   handler: async (ctx, args) => {
     await requireSession(ctx, args.token);
-    const rows = await ctx.db.query("messages").withIndex("by_createdAt").order("desc").take(150);
+    const rows = await ctx.db
+      .query("messages")
+      .withIndex("by_createdAt")
+      .order("desc")
+      .take(300);
+
+    const matching = rows
+      .filter((message) => effectiveChannel(message) === args.channel)
+      .slice(0, 150);
 
     const hydrated = await Promise.all(
-      rows.map(async (message) => ({
+      matching.map(async (message) => ({
         ...message,
-        fileUrl: message.storageId ? await ctx.storage.getUrl(message.storageId) : undefined,
+        channel: effectiveChannel(message),
+        fileUrl: message.storageId
+          ? await ctx.storage.getUrl(message.storageId)
+          : undefined,
       })),
     );
 
@@ -31,6 +60,7 @@ export const sendText = mutationGeneric({
     return ctx.db.insert("messages", {
       sender: session.displayName,
       senderUserId: session.userId,
+      channel: "general",
       kind: "text",
       text,
       createdAt: Date.now(),
@@ -49,6 +79,7 @@ export const generateUploadUrl = mutationGeneric({
 export const sendFile = mutationGeneric({
   args: {
     token: v.string(),
+    channel: v.union(v.literal("screenshots"), v.literal("files")),
     storageId: v.id("_storage"),
     fileName: v.string(),
     fileSize: v.number(),
@@ -57,21 +88,98 @@ export const sendFile = mutationGeneric({
   },
   handler: async (ctx, args) => {
     const session = await requireSession(ctx, args.token);
-    if (!args.fileName.trim()) throw new Error("File name is required.");
-    if (args.fileSize < 0 || args.fileSize > 25 * 1024 * 1024) {
-      throw new Error("Files are limited to 25 MB in this workspace.");
+    const fileName = args.fileName.trim();
+    if (!fileName) throw new Error("File name is required.");
+
+    const isImage = args.mimeType.startsWith("image/");
+    if (args.channel === "screenshots") {
+      if (!isImage) {
+        throw new Error("The Screenshots space only accepts images.");
+      }
+      if (args.encrypted) {
+        throw new Error("Encrypted environment files belong in Files.");
+      }
+      if (args.fileSize <= 0 || args.fileSize > MAX_SCREENSHOT_BYTES) {
+        throw new Error("Screenshots are limited to 8 MB.");
+      }
+    } else {
+      if (isImage) {
+        throw new Error("Images belong in the Screenshots space.");
+      }
+      if (args.fileSize <= 0 || args.fileSize > MAX_FILE_BYTES) {
+        throw new Error("Files are limited to 10 MB.");
+      }
     }
 
     return ctx.db.insert("messages", {
       sender: session.displayName,
       senderUserId: session.userId,
+      channel: args.channel,
       kind: "file",
       storageId: args.storageId,
-      fileName: args.fileName,
+      fileName,
       fileSize: args.fileSize,
       mimeType: args.mimeType || "application/octet-stream",
       encrypted: args.encrypted,
       createdAt: Date.now(),
     });
+  },
+});
+
+export const sendVoice = mutationGeneric({
+  args: {
+    token: v.string(),
+    storageId: v.id("_storage"),
+    fileSize: v.number(),
+    mimeType: v.string(),
+    durationMs: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const session = await requireSession(ctx, args.token);
+    if (!args.mimeType.startsWith("audio/")) {
+      throw new Error("Voice notes must be audio.");
+    }
+    if (args.fileSize <= 0 || args.fileSize > MAX_VOICE_BYTES) {
+      throw new Error("Voice notes are limited to 6 MB.");
+    }
+    if (args.durationMs <= 0 || args.durationMs > MAX_VOICE_DURATION_MS) {
+      throw new Error("Voice notes are limited to 5 minutes.");
+    }
+
+    return ctx.db.insert("messages", {
+      sender: session.displayName,
+      senderUserId: session.userId,
+      channel: "general",
+      kind: "voice",
+      storageId: args.storageId,
+      fileSize: args.fileSize,
+      mimeType: args.mimeType,
+      durationMs: args.durationMs,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const deleteMessage = mutationGeneric({
+  args: { token: v.string(), messageId: v.id("messages") },
+  handler: async (ctx, args) => {
+    const session = await requireSession(ctx, args.token);
+    const message = await ctx.db.get(args.messageId);
+
+    if (!message) return { deleted: false };
+    if (!message.senderUserId || message.senderUserId !== session.userId) {
+      throw new Error("You can only delete messages you sent.");
+    }
+
+    if (message.storageId) {
+      try {
+        await ctx.storage.delete(message.storageId);
+      } catch {
+        // The database row should still be removable if a stored blob is already gone.
+      }
+    }
+
+    await ctx.db.delete(args.messageId);
+    return { deleted: true };
   },
 });
