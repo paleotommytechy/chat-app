@@ -3,8 +3,8 @@ import { ConvexClientProvider } from "@/components/ConvexClientProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "DevCache",
-  description: "A private realtime workspace for developers to chat, share screenshots, files, and encrypted .env files.",
+  title: "Syncret",
+  description: "A private realtime workspace for developers to chat, share screenshots, files, encrypted environment files, and voice notes.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
