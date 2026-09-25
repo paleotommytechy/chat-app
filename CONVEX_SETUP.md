@@ -1,6 +1,8 @@
-# FriendSpace setup
+# Syncret setup
 
-This repository now contains a Next.js + Convex version of the chat app at the repository root. The older `client/` and `server/` folders are kept for history but are no longer used by the new deployment.
+Syncret uses Next.js for the frontend and Convex for authentication, realtime messages, file storage, screenshots, voice notes, and ownership checks.
+
+The older `client/` and `server/` folders are historical and are not used by the current root application.
 
 ## 1. Install dependencies
 
@@ -8,41 +10,73 @@ This repository now contains a Next.js + Convex version of the chat app at the r
 npm install
 ```
 
-## 2. Create/connect the Convex project
+## 2. Connect the Convex project
 
 ```bash
 npx convex dev
 ```
 
-Choose/create the Convex project when prompted. This writes `CONVEX_DEPLOYMENT` plus `NEXT_PUBLIC_CONVEX_URL` to `.env.local` and also generates Convex helper types. FriendSpace uses Convex's supported `anyApi` / generic server APIs so the very first Vercel build does not depend on generated files already being committed.
+Choose the correct Convex project when prompted.
 
-## 3. Set the private workspace access code
+Convex writes values like these to `.env.local`:
 
-Use a long random value and share it with friends through a separate trusted channel.
-
-```bash
-npx convex env set WORKSPACE_ACCESS_CODE "replace-this-with-a-long-random-code"
+```env
+CONVEX_DEPLOYMENT=...
+NEXT_PUBLIC_CONVEX_URL=https://your-development-deployment.convex.cloud
 ```
 
-Do **not** commit the code to GitHub and do not prefix it with `NEXT_PUBLIC_`.
+It also watches the `convex/` directory and publishes backend function changes while it is running.
 
-## 4. Run locally
+## 3. Run Syncret locally
+
+Keep `npx convex dev` running in one terminal.
+
+In a second terminal:
 
 ```bash
-npm run dev
+npm run dev -- -p 3002
 ```
 
-Open http://localhost:3000.
+Open:
 
-## 5. Deploy to Vercel
+```text
+http://localhost:3002
+```
 
-Import this GitHub repository into Vercel. Add a production Convex deploy key as `CONVEX_DEPLOY_KEY` in Vercel project environment variables. The included `vercel-build` script supplies `NEXT_PUBLIC_CONVEX_URL` to Next.js explicitly, builds the frontend, and deploys the Convex functions.
+Voice notes require microphone permission. Browser microphone access works on `localhost` and secure HTTPS origins.
 
-For the production Convex deployment, also set `WORKSPACE_ACCESS_CODE` in Convex's production environment.
+## 4. Deploy the Convex backend you want to use
+
+For a production backend, deploy Convex separately from the frontend:
+
+```bash
+npx convex deploy
+```
+
+Use the resulting production Convex client URL for the production frontend.
+
+## 5. Deploy the frontend yourself
+
+Syncret's repository is pushed to GitHub `main`. Import or connect that repository in your own Vercel project.
+
+Add this Vercel environment variable:
+
+```env
+NEXT_PUBLIC_CONVEX_URL=https://your-production-deployment.convex.cloud
+```
+
+That is the only Vercel environment variable currently required by the Syncret frontend.
+
+You do not need `WORKSPACE_ACCESS_CODE`: Syncret now uses individual email/password accounts.
+
+You also do not need a file-encryption secret in Vercel. Syncret generates the shared encryption key in the authenticated Convex backend.
 
 ## Security notes
 
-- Every app query/mutation validates a workspace session token.
-- `.env`, `.env.*`, and `*.env` files are encrypted in the browser with AES-GCM before upload. Convex only stores ciphertext for those files.
-- Convex file URLs are bearer URLs. Normal files and screenshots are only handed to authenticated workspace sessions, but someone who receives a copied file URL can reuse it. Sensitive `.env` files remain encrypted even if that URL leaks.
-- For highly sensitive production credentials, a dedicated secrets manager is still safer than chat/file sharing.
+- Every protected query and mutation validates a Syncret session.
+- Message deletion is checked by Convex and only the original authenticated sender can delete their item.
+- General is restricted to text and voice notes.
+- Screenshots is restricted to images.
+- Files is for small non-image project/config/document files.
+- `.env`, `.env.*`, and `*.env` files are encrypted in the browser before upload.
+- Convex storage URLs are bearer URLs, so highly sensitive production credentials still belong in a dedicated secrets manager.
