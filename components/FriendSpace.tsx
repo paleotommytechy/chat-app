@@ -13,37 +13,46 @@ import {
   LockKeyhole,
   LogOut,
   Mail,
+  Mic,
   Paperclip,
   Send,
   ShieldCheck,
   Sparkles,
+  Square,
+  Trash2,
   UploadCloud,
   UserRound,
   Users,
   X,
 } from "lucide-react";
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { anyApi } from "convex/server";
 import { decryptSensitiveFile, encryptSensitiveFile, isSensitiveEnvFile } from "@/lib/crypto";
 
-type Filter = "all" | "files" | "screenshots";
+type Channel = "general" | "screenshots" | "files";
 
 type Message = {
   _id: string;
   sender: string;
-  kind: "text" | "file";
+  senderUserId?: string;
+  channel?: Channel;
+  kind: "text" | "file" | "voice";
   text?: string;
   fileName?: string;
   fileSize?: number;
   mimeType?: string;
   encrypted?: boolean;
   fileUrl?: string | null;
+  durationMs?: number;
   createdAt: number;
 };
 
 const api = anyApi;
-const MAX_FILE_SIZE = 25 * 1024 * 1024;
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_SCREENSHOT_SIZE = 8 * 1024 * 1024;
+const MAX_VOICE_SIZE = 6 * 1024 * 1024;
+const MAX_VOICE_SECONDS = 5 * 60;
 
 function makeSessionToken() {
   return `${crypto.randomUUID()}-${crypto.randomUUID()}`;
@@ -59,6 +68,13 @@ function formatTime(timestamp: number) {
   return new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" }).format(timestamp);
 }
 
+function formatDuration(milliseconds = 0) {
+  const totalSeconds = Math.max(0, Math.round(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 function initials(name: string) {
   return name
     .split(/\s+/)
@@ -67,8 +83,15 @@ function initials(name: string) {
     .join("");
 }
 
-function isImageMessage(message: Message) {
-  return Boolean(message.mimeType?.startsWith("image/") && !message.encrypted);
+function supportedAudioMimeType() {
+  if (typeof MediaRecorder === "undefined") return "";
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+  ];
+  return candidates.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
 }
 
 export function DevCache() {
@@ -78,6 +101,8 @@ export function DevCache() {
   const sendText = useMutation(api.messages.sendText);
   const generateUploadUrl = useMutation(api.messages.generateUploadUrl);
   const sendFile = useMutation(api.messages.sendFile);
+  const sendVoice = useMutation(api.messages.sendVoice);
+  const deleteMessage = useMutation(api.messages.deleteMessage);
 
   const [token, setToken] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
@@ -88,14 +113,25 @@ export function DevCache() {
   const [rememberMe, setRememberMe] = useState(true);
   const [loginError, setLoginError] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  const [channel, setChannel] = useState<Channel>("general");
   const [text, setText] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const recordingStartedAtRef = useRef(0);
+  const recordingTimerRef = useRef<number | null>(null);
+  const discardRecordingRef = useRef(false);
 
   useEffect(() => {
     const local = window.localStorage.getItem("devcache-session-token");
@@ -113,19 +149,40 @@ export function DevCache() {
   }, []);
 
   const session = useQuery(api.auth.session, token ? { token } : "skip");
-  const messages = useQuery(api.messages.list, token && session ? { token } : "skip") as Message[] | undefined;
-  const fileEncryptionKey = useQuery(api.auth.fileEncryptionKey, token && session ? { token } : "skip") as string | null | undefined;
+  const messages = useQuery(
+    api.messages.list,
+    token && session ? { token, channel } : "skip",
+  ) as Message[] | undefined;
+  const fileEncryptionKey = useQuery(
+    api.auth.fileEncryptionKey,
+    token && session ? { token } : "skip",
+  ) as string | null | undefined;
 
   useEffect(() => {
     if (messages?.length) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages?.length]);
+  }, [messages?.length, channel]);
 
-  const filteredMessages = useMemo(() => {
-    if (!messages) return [];
-    if (filter === "files") return messages.filter((message) => message.kind === "file");
-    if (filter === "screenshots") return messages.filter((message) => isImageMessage(message));
-    return messages;
-  }, [filter, messages]);
+  useEffect(() => {
+    if (channel !== "screenshots" || !token) return;
+
+    const handleWindowPaste = (event: ClipboardEvent) => {
+      const files = Array.from(event.clipboardData?.files ?? []);
+      const image = files.find((file) => file.type.startsWith("image/"));
+      if (!image) return;
+      event.preventDefault();
+      void uploadSharedFile(image, "screenshots");
+    };
+
+    window.addEventListener("paste", handleWindowPaste);
+    return () => window.removeEventListener("paste", handleWindowPaste);
+  }, [channel, token, uploading, fileEncryptionKey]);
+
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current);
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
 
   async function handleLogin(event: FormEvent) {
     event.preventDefault();
@@ -138,6 +195,7 @@ export function DevCache() {
       } else {
         await login({ email, password, token: nextToken });
       }
+
       window.localStorage.removeItem("devcache-session-token");
       window.sessionStorage.removeItem("devcache-session-token");
       const storage = rememberMe ? window.localStorage : window.sessionStorage;
@@ -152,6 +210,8 @@ export function DevCache() {
   }
 
   async function handleLogout() {
+    if (isRecording) cancelRecording();
+
     if (token) {
       try {
         await logoutMutation({ token });
@@ -159,6 +219,7 @@ export function DevCache() {
         // Local sign-out still proceeds if the network is unavailable.
       }
     }
+
     window.localStorage.removeItem("devcache-session-token");
     window.sessionStorage.removeItem("devcache-session-token");
     window.localStorage.removeItem("friendspace-session-token");
@@ -166,9 +227,10 @@ export function DevCache() {
   }
 
   async function handleSend() {
-    if (!token || !text.trim()) return;
+    if (!token || channel !== "general" || !text.trim()) return;
     const body = text;
     setText("");
+
     try {
       await sendText({ token, text: body });
     } catch (error) {
@@ -184,21 +246,40 @@ export function DevCache() {
     }
   }
 
-  async function uploadFile(file: File) {
+  async function uploadSharedFile(file: File, targetChannel: "screenshots" | "files" = channel as "screenshots" | "files") {
     if (!token || uploading) return;
-    if (file.size > MAX_FILE_SIZE) {
-      setStatus("That file is larger than the 25 MB workspace limit.");
-      return;
+
+    if (targetChannel === "screenshots") {
+      if (!file.type.startsWith("image/")) {
+        setStatus("Screenshots only accepts image files.");
+        return;
+      }
+      if (file.size > MAX_SCREENSHOT_SIZE) {
+        setStatus("Screenshots are limited to 8 MB.");
+        return;
+      }
+    } else {
+      if (file.type.startsWith("image/")) {
+        setStatus("Images belong in Screenshots, not Files.");
+        return;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        setStatus("Files are limited to 10 MB.");
+        return;
+      }
     }
 
     setStatus("");
     setUploading(true);
+
     try {
-      const encrypted = isSensitiveEnvFile(file.name);
+      const encrypted = targetChannel === "files" && isSensitiveEnvFile(file.name);
       let uploadBody: Blob | File = file;
 
       if (encrypted) {
-        if (!fileEncryptionKey) throw new Error("Encrypted .env sharing is not configured yet.");
+        if (!fileEncryptionKey) {
+          throw new Error("Encrypted .env sharing is not configured yet.");
+        }
         uploadBody = await encryptSensitiveFile(file, fileEncryptionKey);
       }
 
@@ -209,11 +290,12 @@ export function DevCache() {
         body: uploadBody,
       });
 
-      if (!response.ok) throw new Error("The file upload failed.");
+      if (!response.ok) throw new Error("The upload failed.");
       const { storageId } = (await response.json()) as { storageId: string };
 
       await sendFile({
         token,
+        channel: targetChannel,
         storageId: storageId as never,
         fileName: file.name,
         fileSize: file.size,
@@ -221,7 +303,13 @@ export function DevCache() {
         encrypted,
       });
 
-      setStatus(encrypted ? "Encrypted .env file shared safely." : "File shared.");
+      setStatus(
+        targetChannel === "screenshots"
+          ? "Screenshot shared."
+          : encrypted
+            ? "Encrypted .env file shared safely."
+            : "File shared.",
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Upload failed.");
     } finally {
@@ -230,18 +318,147 @@ export function DevCache() {
     }
   }
 
+  async function uploadVoiceNote(blob: Blob, durationMs: number) {
+    if (!token) return;
+    if (blob.size > MAX_VOICE_SIZE) {
+      setStatus("Voice note is too large. Keep recordings under 5 minutes.");
+      return;
+    }
+
+    setUploading(true);
+    setStatus("");
+
+    try {
+      const uploadUrl = await generateUploadUrl({ token });
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": blob.type || "audio/webm" },
+        body: blob,
+      });
+
+      if (!response.ok) throw new Error("Voice note upload failed.");
+      const { storageId } = (await response.json()) as { storageId: string };
+
+      await sendVoice({
+        token,
+        storageId: storageId as never,
+        fileSize: blob.size,
+        mimeType: blob.type || "audio/webm",
+        durationMs,
+      });
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Voice note failed to send.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function startRecording() {
+    if (!token || channel !== "general" || isRecording || uploading) return;
+
+    if (
+      typeof MediaRecorder === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      setStatus("Voice recording is not supported in this browser.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferredType = supportedAudioMimeType();
+      const recorder = preferredType
+        ? new MediaRecorder(stream, { mimeType: preferredType })
+        : new MediaRecorder(stream);
+
+      voiceChunksRef.current = [];
+      discardRecordingRef.current = false;
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      recordingStartedAtRef.current = Date.now();
+      setRecordingSeconds(0);
+      setStatus("");
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) voiceChunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = () => {
+        const durationMs = Math.max(1000, Date.now() - recordingStartedAtRef.current);
+        const shouldDiscard = discardRecordingRef.current;
+        const chunks = [...voiceChunksRef.current];
+        const mimeType = recorder.mimeType || preferredType || "audio/webm";
+
+        if (recordingTimerRef.current) {
+          window.clearInterval(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+
+        stream.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        voiceChunksRef.current = [];
+        setIsRecording(false);
+        setRecordingSeconds(0);
+
+        if (shouldDiscard || chunks.length === 0) return;
+        const blob = new Blob(chunks, { type: mimeType });
+        void uploadVoiceNote(blob, durationMs);
+      };
+
+      recorder.start(250);
+      setIsRecording(true);
+
+      recordingTimerRef.current = window.setInterval(() => {
+        const elapsed = Math.floor((Date.now() - recordingStartedAtRef.current) / 1000);
+        setRecordingSeconds(elapsed);
+
+        if (elapsed >= MAX_VOICE_SECONDS && recorder.state !== "inactive") {
+          recorder.stop();
+        }
+      }, 250);
+    } catch (error) {
+      setStatus(
+        error instanceof Error && error.name === "NotAllowedError"
+          ? "Microphone permission was denied. Allow microphone access and try again."
+          : "Could not start the microphone.",
+      );
+    }
+  }
+
+  function stopRecording() {
+    discardRecordingRef.current = false;
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+  }
+
+  function cancelRecording() {
+    discardRecordingRef.current = true;
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+  }
+
   async function downloadFile(message: Message) {
     if (!message.fileUrl || !message.fileName) return;
     setStatus("");
+
     try {
       const response = await fetch(message.fileUrl);
       if (!response.ok) throw new Error("Could not download this file.");
       const payload = await response.arrayBuffer();
-      let blob = new Blob([payload], { type: message.mimeType || "application/octet-stream" });
+      let blob = new Blob([payload], {
+        type: message.mimeType || "application/octet-stream",
+      });
 
       if (message.encrypted) {
-        if (!fileEncryptionKey) throw new Error("Encrypted .env sharing is not configured yet.");
-        blob = await decryptSensitiveFile(payload, fileEncryptionKey, message.mimeType || "text/plain");
+        if (!fileEncryptionKey) {
+          throw new Error("Encrypted .env sharing is not configured yet.");
+        }
+        blob = await decryptSensitiveFile(
+          payload,
+          fileEncryptionKey,
+          message.mimeType || "text/plain",
+        );
       }
 
       const url = URL.createObjectURL(blob);
@@ -257,19 +474,52 @@ export function DevCache() {
     }
   }
 
-  function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
-    const file = Array.from(event.clipboardData.files).find((item) => item.type.startsWith("image/"));
-    if (file) {
-      event.preventDefault();
-      void uploadFile(file);
+  async function handleDelete(message: Message) {
+    if (!token || deletingId) return;
+
+    const label =
+      message.kind === "voice"
+        ? "voice note"
+        : message.kind === "file"
+          ? channel === "screenshots"
+            ? "screenshot"
+            : "file"
+          : "message";
+
+    if (!window.confirm(`Delete this ${label}? This cannot be undone.`)) return;
+
+    setDeletingId(message._id);
+    setStatus("");
+
+    try {
+      await deleteMessage({ token, messageId: message._id as never });
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not delete this item.");
+    } finally {
+      setDeletingId(null);
     }
   }
 
   function handleDrop(event: React.DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDragging(false);
+
     const file = event.dataTransfer.files?.[0];
-    if (file) void uploadFile(file);
+    if (!file) return;
+
+    if (channel === "general") {
+      setStatus("General is for text and voice notes. Use Screenshots or Files to share uploads.");
+      return;
+    }
+
+    void uploadSharedFile(file, channel);
+  }
+
+  function selectChannel(nextChannel: Channel) {
+    if (isRecording) cancelRecording();
+    setChannel(nextChannel);
+    setStatus("");
+    setDragging(false);
   }
 
   if (!token || session === null) {
@@ -402,100 +652,381 @@ export function DevCache() {
   }
 
   if (session === undefined) {
-    return <main className="loading-screen"><div className="pulse-logo"><Image src="/devcache-logo.svg" alt="" width={38} height={38} /></div><p>Opening DevCache…</p></main>;
+    return (
+      <main className="loading-screen">
+        <div className="pulse-logo">
+          <Image src="/devcache-logo.svg" alt="" width={38} height={38} />
+        </div>
+        <p>Opening DevCache…</p>
+      </main>
+    );
   }
 
   const currentName = session.displayName;
+  const channelMeta = {
+    general: {
+      title: "# general",
+      subtitle: "Conversation and voice notes only",
+      emptyTitle: "Start the conversation",
+      emptyText: "Send a message or record a voice note. Files stay in Files, and images stay in Screenshots.",
+      icon: <Users size={26} />,
+    },
+    screenshots: {
+      title: "# screenshots",
+      subtitle: "Images for bugs, UI issues and visual context",
+      emptyTitle: "No screenshots yet",
+      emptyText: "Upload, drag or paste an image here when you need to show what is happening on screen.",
+      icon: <ImageIcon size={26} />,
+    },
+    files: {
+      title: "# files",
+      subtitle: "Small project, config and environment files",
+      emptyTitle: "No files yet",
+      emptyText: "Share small files like .env, AGENTS.md, configs, snippets and documents here.",
+      icon: <FileText size={26} />,
+    },
+  }[channel];
 
   return (
     <main
       className={`workspace ${dragging ? "is-dragging" : ""}`}
-      onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+      onDragOver={(event) => {
+        if (channel === "general") return;
+        event.preventDefault();
+        setDragging(true);
+      }}
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
     >
-      {dragging && <div className="drop-overlay"><UploadCloud size={34} /><strong>Drop to share</strong><span>Up to 25 MB</span></div>}
+      {dragging && channel !== "general" && (
+        <div className="drop-overlay">
+          <UploadCloud size={34} />
+          <strong>{channel === "screenshots" ? "Drop screenshot" : "Drop file"}</strong>
+          <span>
+            {channel === "screenshots"
+              ? "Images only · up to 8 MB"
+              : "Small files · up to 10 MB"}
+          </span>
+        </div>
+      )}
 
       <aside className="sidebar">
-        <div className="sidebar-brand"><span className="brand-mark small"><Image src="/devcache-logo.svg" alt="" width={30} height={30} /></span><div><strong>DevCache</strong><small>private workspace</small></div></div>
+        <div className="sidebar-brand">
+          <span className="brand-mark small">
+            <Image src="/devcache-logo.svg" alt="" width={30} height={30} />
+          </span>
+          <div>
+            <strong>DevCache</strong>
+            <small>private workspace</small>
+          </div>
+        </div>
 
-        <nav className="nav-group" aria-label="Message filters">
-          <span className="nav-label">Workspace</span>
-          <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}><Hash size={17} /><span>general</span></button>
-          <button className={filter === "files" ? "active" : ""} onClick={() => setFilter("files")}><FileText size={17} /><span>files</span></button>
-          <button className={filter === "screenshots" ? "active" : ""} onClick={() => setFilter("screenshots")}><ImageIcon size={17} /><span>screenshots</span></button>
+        <nav className="nav-group" aria-label="DevCache spaces">
+          <span className="nav-label">Spaces</span>
+          <button
+            className={channel === "general" ? "active" : ""}
+            onClick={() => selectChannel("general")}
+          >
+            <Hash size={17} /><span>general</span>
+          </button>
+          <button
+            className={channel === "screenshots" ? "active" : ""}
+            onClick={() => selectChannel("screenshots")}
+          >
+            <ImageIcon size={17} /><span>screenshots</span>
+          </button>
+          <button
+            className={channel === "files" ? "active" : ""}
+            onClick={() => selectChannel("files")}
+          >
+            <FileText size={17} /><span>files</span>
+          </button>
         </nav>
 
         <div className="security-card">
           <ShieldCheck size={18} />
-          <div><strong>Protected sharing</strong><p><code>.env</code> files are encrypted before upload.</p></div>
+          <div>
+            <strong>Protected sharing</strong>
+            <p><code>.env</code> files are encrypted before upload.</p>
+          </div>
         </div>
 
         <div className="profile-card">
           <div className="avatar">{initials(currentName)}</div>
-          <div className="profile-copy"><strong>{currentName}</strong><span><i /> connected</span></div>
-          <button className="icon-button" onClick={handleLogout} title="Sign out"><LogOut size={17} /></button>
+          <div className="profile-copy">
+            <strong>{currentName}</strong>
+            <span><i /> connected</span>
+          </div>
+          <button className="icon-button" onClick={handleLogout} title="Sign out">
+            <LogOut size={17} />
+          </button>
         </div>
       </aside>
 
       <section className="chat-panel">
         <header className="chat-header">
-          <div><h2>{filter === "all" ? "# general" : filter === "files" ? "# files" : "# screenshots"}</h2><p>{filter === "all" ? "The shared room for your group" : filter === "files" ? "Files shared in the workspace" : "Images and pasted screenshots"}</p></div>
-          <div className="header-status"><Sparkles size={15} /><span>Realtime via Convex</span></div>
+          <div>
+            <h2>{channelMeta.title}</h2>
+            <p>{channelMeta.subtitle}</p>
+          </div>
+          <div className="header-status">
+            <Sparkles size={15} />
+            <span>Realtime via Convex</span>
+          </div>
         </header>
 
         <div className="message-scroll">
-          {!filteredMessages.length && (
+          {!messages?.length && (
             <div className="empty-state">
-              <div className="empty-icon"><Users size={26} /></div>
-              <h3>{filter === "all" ? "Start the conversation" : "Nothing here yet"}</h3>
-              <p>{filter === "all" ? "Send a message, attach a file, or paste a screenshot directly into the composer." : "Shared items matching this filter will appear here."}</p>
+              <div className="empty-icon">{channelMeta.icon}</div>
+              <h3>{channelMeta.emptyTitle}</h3>
+              <p>{channelMeta.emptyText}</p>
             </div>
           )}
 
-          {filteredMessages.map((message, index) => {
-            const mine = message.sender === currentName;
-            const previous = filteredMessages[index - 1];
-            const grouped = previous?.sender === message.sender && message.createdAt - previous.createdAt < 5 * 60 * 1000;
+          {messages?.map((message, index) => {
+            const ownedByMe = Boolean(
+              message.senderUserId && message.senderUserId === session.userId,
+            );
+            const mine = message.senderUserId
+              ? ownedByMe
+              : message.sender === currentName;
+            const previous = messages[index - 1];
+            const grouped =
+              previous?.sender === message.sender &&
+              message.createdAt - previous.createdAt < 5 * 60 * 1000;
+
             return (
-              <article className={`message-row ${mine ? "mine" : ""} ${grouped ? "grouped" : ""}`} key={message._id}>
-                {!grouped && <div className="message-avatar">{initials(message.sender)}</div>}
+              <article
+                className={`message-row ${mine ? "mine" : ""} ${grouped ? "grouped" : ""}`}
+                key={message._id}
+              >
+                {!grouped && (
+                  <div className="message-avatar">{initials(message.sender)}</div>
+                )}
                 {grouped && <div className="message-avatar spacer" />}
+
                 <div className="message-body">
-                  {!grouped && <div className="message-meta"><strong>{message.sender}</strong><span>{formatTime(message.createdAt)}</span></div>}
-                  {message.kind === "text" && <p className="message-text">{message.text}</p>}
+                  {!grouped && (
+                    <div className="message-meta">
+                      <strong>{message.sender}</strong>
+                      <span>{formatTime(message.createdAt)}</span>
+                    </div>
+                  )}
+
+                  {ownedByMe && (
+                    <button
+                      className="message-delete"
+                      onClick={() => void handleDelete(message)}
+                      disabled={deletingId === message._id}
+                      title="Delete"
+                      aria-label="Delete this item"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+
+                  {message.kind === "text" && (
+                    <p className="message-text">{message.text}</p>
+                  )}
+
+                  {message.kind === "voice" && (
+                    <div className="voice-note">
+                      <div className="voice-icon"><Mic size={17} /></div>
+                      <div className="voice-player">
+                        <audio
+                          controls
+                          preload="metadata"
+                          src={message.fileUrl ?? undefined}
+                        />
+                        <span>
+                          Voice note · {formatDuration(message.durationMs)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   {message.kind === "file" && (
-                    <div className={`file-card ${isImageMessage(message) ? "image-card" : ""}`}>
-                      {isImageMessage(message) && message.fileUrl ? (
+                    <div className={`file-card ${channel === "screenshots" ? "image-card" : ""}`}>
+                      {channel === "screenshots" && message.fileUrl ? (
                         <div className="image-preview">
-                          <Image src={message.fileUrl} alt={message.fileName || "Shared screenshot"} fill sizes="(max-width: 800px) 80vw, 520px" unoptimized />
+                          <Image
+                            src={message.fileUrl}
+                            alt={message.fileName || "Shared screenshot"}
+                            fill
+                            sizes="(max-width: 800px) 80vw, 520px"
+                            unoptimized
+                          />
                         </div>
                       ) : (
-                        <div className={`file-icon ${message.encrypted ? "secure" : ""}`}>{message.encrypted ? <LockKeyhole size={22} /> : <FileText size={22} />}</div>
+                        <div className={`file-icon ${message.encrypted ? "secure" : ""}`}>
+                          {message.encrypted ? <LockKeyhole size={22} /> : <FileText size={22} />}
+                        </div>
                       )}
+
                       <div className="file-copy">
                         <strong>{message.fileName}</strong>
-                        <span>{formatBytes(message.fileSize)}{message.encrypted ? " · client-encrypted" : ""}</span>
+                        <span>
+                          {formatBytes(message.fileSize)}
+                          {message.encrypted ? " · client-encrypted" : ""}
+                        </span>
                       </div>
-                      <button className="download-button" onClick={() => void downloadFile(message)} title="Download"><Download size={17} /></button>
+
+                      <button
+                        className="download-button"
+                        onClick={() => void downloadFile(message)}
+                        title="Download"
+                      >
+                        <Download size={17} />
+                      </button>
                     </div>
                   )}
                 </div>
               </article>
             );
           })}
+
           <div ref={bottomRef} />
         </div>
 
         <footer className="composer-wrap">
-          {status && <div className="composer-status"><span>{status}</span><button onClick={() => setStatus("")}><X size={14} /></button></div>}
-          <div className="composer">
-            <input ref={fileInputRef} type="file" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadFile(file); }} />
-            <button className="attach-button" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Attach file"><Paperclip size={19} /></button>
-            <textarea value={text} onChange={(event) => setText(event.target.value)} onKeyDown={handleComposerKeyDown} onPaste={handlePaste} placeholder={uploading ? "Uploading file…" : "Message #general — paste screenshots here too"} rows={1} />
-            <button className="send-button" onClick={() => void handleSend()} disabled={!text.trim() || uploading}><Send size={18} /></button>
-          </div>
-          <div className="composer-help"><span>Enter to send · Shift + Enter for a new line</span><span>Files up to 25 MB</span></div>
+          {status && (
+            <div className="composer-status">
+              <span>{status}</span>
+              <button onClick={() => setStatus("")}>
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          {channel === "general" && (
+            <>
+              <div className={`composer general-composer ${isRecording ? "recording" : ""}`}>
+                {isRecording ? (
+                  <>
+                    <button
+                      className="record-cancel-button"
+                      onClick={cancelRecording}
+                      title="Cancel voice note"
+                    >
+                      <X size={18} />
+                    </button>
+
+                    <div className="recording-indicator">
+                      <span className="recording-dot" />
+                      <strong>Recording</strong>
+                      <span>{formatDuration(recordingSeconds * 1000)}</span>
+                    </div>
+
+                    <button
+                      className="record-stop-button"
+                      onClick={stopRecording}
+                      title="Stop and send voice note"
+                    >
+                      <Square size={16} fill="currentColor" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="mic-button"
+                      onClick={() => void startRecording()}
+                      disabled={uploading}
+                      title="Record voice note"
+                    >
+                      <Mic size={19} />
+                    </button>
+
+                    <textarea
+                      value={text}
+                      onChange={(event) => setText(event.target.value)}
+                      onKeyDown={handleComposerKeyDown}
+                      placeholder={uploading ? "Sending voice note…" : "Message #general"}
+                      rows={1}
+                    />
+
+                    <button
+                      className="send-button"
+                      onClick={() => void handleSend()}
+                      disabled={!text.trim() || uploading}
+                    >
+                      <Send size={18} />
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <div className="composer-help">
+                <span>
+                  {isRecording
+                    ? "Square sends · X cancels · maximum 5 minutes"
+                    : "General is for text and voice notes only"}
+                </span>
+                {!isRecording && <span>Enter to send · Shift + Enter for a new line</span>}
+              </div>
+            </>
+          )}
+
+          {channel === "screenshots" && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void uploadSharedFile(file, "screenshots");
+                }}
+              />
+              <div className="upload-composer">
+                <div>
+                  <ImageIcon size={20} />
+                  <span>
+                    <strong>Share a screenshot</strong>
+                    <small>Image only · paste, drag or choose · max 8 MB</small>
+                  </span>
+                </div>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  <UploadCloud size={17} />
+                  {uploading ? "Uploading…" : "Choose image"}
+                </button>
+              </div>
+            </>
+          )}
+
+          {channel === "files" && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                hidden
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void uploadSharedFile(file, "files");
+                }}
+              />
+              <div className="upload-composer">
+                <div>
+                  <Paperclip size={20} />
+                  <span>
+                    <strong>Share a small file</strong>
+                    <small>.env, AGENTS.md, configs and docs · max 10 MB</small>
+                  </span>
+                </div>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  <UploadCloud size={17} />
+                  {uploading ? "Uploading…" : "Choose file"}
+                </button>
+              </div>
+            </>
+          )}
         </footer>
       </section>
     </main>
