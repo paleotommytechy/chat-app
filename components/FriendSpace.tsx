@@ -350,7 +350,7 @@ export function DevCache() {
             </label>
 
             {!signingUp && (
-              <label className="remember-row">
+              <div className="remember-row">
                 <button
                   type="button"
                   className={`remember-box ${rememberMe ? "checked" : ""}`}
@@ -360,7 +360,7 @@ export function DevCache() {
                   {rememberMe && <Check size={16} strokeWidth={3} />}
                 </button>
                 <span>Remember Me</span>
-              </label>
+              </div>
             )}
 
             {loginError && <div className="error-note">{loginError}</div>}
