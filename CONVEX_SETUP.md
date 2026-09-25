@@ -14,7 +14,7 @@ npm install
 npx convex dev
 ```
 
-Choose/create the Convex project when prompted. This generates `convex/_generated/` and writes `CONVEX_DEPLOYMENT` plus `NEXT_PUBLIC_CONVEX_URL` to `.env.local`.
+Choose/create the Convex project when prompted. This writes `CONVEX_DEPLOYMENT` plus `NEXT_PUBLIC_CONVEX_URL` to `.env.local` and also generates Convex helper types. FriendSpace uses Convex's supported `anyApi` / generic server APIs so the very first Vercel build does not depend on generated files already being committed.
 
 ## 3. Set the private workspace access code
 
