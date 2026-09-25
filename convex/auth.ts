@@ -11,6 +11,12 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+function randomBytes(length: number) {
+  const bytes = new Uint8Array(length);
+  for (let i = 0; i < length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  return bytes;
+}
+
 function bytesToBase64(bytes: Uint8Array) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -103,11 +109,11 @@ export const signup = mutationGeneric({
       .unique();
     if (existing) throw new Error("An account already exists with this email.");
 
-    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const salt = randomBytes(16);
     const passwordHash = await derivePasswordHash(args.password, salt);
     const existingSecret = await ctx.db.query("workspaceSecrets").first();
     if (!existingSecret) {
-      const key = bytesToBase64(crypto.getRandomValues(new Uint8Array(32)));
+      const key = bytesToBase64(randomBytes(32));
       await ctx.db.insert("workspaceSecrets", { fileEncryptionKey: key, createdAt: Date.now() });
     }
 
