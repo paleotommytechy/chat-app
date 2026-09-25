@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { anyApi } from "convex/server";
 import { decryptSensitiveFile, encryptSensitiveFile, isSensitiveEnvFile } from "@/lib/crypto";
 
 type Filter = "all" | "files" | "screenshots";
@@ -36,6 +36,7 @@ type Message = {
   createdAt: number;
 };
 
+const api = anyApi;
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
 function makeSessionToken() {
