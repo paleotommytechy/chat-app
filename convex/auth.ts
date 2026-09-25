@@ -105,6 +105,12 @@ export const signup = mutationGeneric({
 
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const passwordHash = await derivePasswordHash(args.password, salt);
+    const existingSecret = await ctx.db.query("workspaceSecrets").first();
+    if (!existingSecret) {
+      const key = bytesToBase64(crypto.getRandomValues(new Uint8Array(32)));
+      await ctx.db.insert("workspaceSecrets", { fileEncryptionKey: key, createdAt: Date.now() });
+    }
+
     const userId = await ctx.db.insert("users", {
       displayName,
       email,
@@ -163,7 +169,8 @@ export const fileEncryptionKey = queryGeneric({
   args: { token: v.string() },
   handler: async (ctx, args) => {
     await requireSession(ctx, args.token);
-    return process.env.FILE_ENCRYPTION_KEY ?? null;
+    const secret = await ctx.db.query("workspaceSecrets").first();
+    return secret?.fileEncryptionKey ?? null;
   },
 });
 
