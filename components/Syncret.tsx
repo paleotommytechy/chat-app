@@ -136,22 +136,22 @@ export function Syncret() {
   useEffect(() => {
     const local = window.localStorage.getItem("syncret-session-token");
     const sessionOnly = window.sessionStorage.getItem("syncret-session-token");
-    const legacyDevCacheLocal = window.localStorage.getItem("devcache-session-token");
-    const legacyDevCacheSession = window.sessionStorage.getItem("devcache-session-token");
-    const legacyFriendSpace = window.localStorage.getItem("friendspace-session-token");
+    const legacyPersistentToken = window.localStorage.getItem("devcache-session-token");
+    const legacySessionToken = window.sessionStorage.getItem("devcache-session-token");
+    const olderLegacyToken = window.localStorage.getItem("friendspace-session-token");
     const saved =
       local ??
       sessionOnly ??
-      legacyDevCacheLocal ??
-      legacyDevCacheSession ??
-      legacyFriendSpace;
+      legacyPersistentToken ??
+      legacySessionToken ??
+      olderLegacyToken;
 
     if (!saved) return;
 
     setToken(saved);
 
     if (!local && !sessionOnly) {
-      if (legacyDevCacheSession) {
+      if (legacySessionToken) {
         window.sessionStorage.setItem("syncret-session-token", saved);
       } else {
         window.localStorage.setItem("syncret-session-token", saved);
