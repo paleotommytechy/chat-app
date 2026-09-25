@@ -1,13 +1,8 @@
 node_modules/
+.next/
+.vercel/
 .env
-.env.local
-.DS_Store
+.env.*
+!.env.example
 *.log
-npm-debug.log*
-
-# Server
-server/node_modules/
-
-# Client
-client/node_modules/
-client/dist/
+.DS_Store
