@@ -33,7 +33,7 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
   padding: 28px;
 }
 
-.devcache-auth {
+.syncret-auth {
   color-scheme: light;
   overflow-x: hidden;
   overflow-y: auto;
@@ -45,8 +45,8 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
     linear-gradient(145deg, #f8fbff 0%, #edf5ff 46%, #e7f0ff 100%);
 }
 
-.devcache-auth::before,
-.devcache-auth::after {
+.syncret-auth::before,
+.syncret-auth::after {
   content: "";
   position: absolute;
   border-radius: 50%;
@@ -57,7 +57,7 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
   pointer-events: none;
 }
 
-.devcache-auth::before {
+.syncret-auth::before {
   width: 330px;
   height: 330px;
   left: -180px;
@@ -65,7 +65,7 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
   background: rgba(185,214,255,.24);
 }
 
-.devcache-auth::after {
+.syncret-auth::after {
   width: 360px;
   height: 360px;
   right: -215px;
@@ -86,7 +86,7 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
 .auth-orb-two { width: 48px; height: 48px; bottom: 16%; left: 9%; }
 .auth-orb-three { width: 112px; height: 112px; top: 42%; right: -58px; }
 
-.devcache-login-card {
+.syncret-login-card {
   width: min(100%, 520px);
   position: relative;
   z-index: 2;
@@ -98,20 +98,20 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
   backdrop-filter: blur(4px);
 }
 
-.devcache-logo-wrap {
+.syncret-logo-wrap {
   display: grid;
   place-items: center;
   min-height: 142px;
 }
 
-.devcache-logo {
+.syncret-logo {
   width: 142px;
   height: 142px;
   object-fit: contain;
   filter: drop-shadow(0 18px 24px rgba(33, 103, 238, .18));
 }
 
-.devcache-wordmark {
+.syncret-wordmark {
   display: flex;
   justify-content: center;
   align-items: baseline;
@@ -122,8 +122,8 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
   line-height: 1;
 }
 
-.devcache-wordmark span { color: #081940; }
-.devcache-wordmark strong {
+.syncret-wordmark span { color: #081940; }
+.syncret-wordmark strong {
   font: inherit;
   background: linear-gradient(110deg, #1656e8, #18aef5);
   -webkit-background-clip: text;
@@ -330,7 +330,7 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
 
 .auth-alternative button:hover { text-decoration: underline; }
 
-.devcache-footnote {
+.syncret-footnote {
   margin: 29px 0 0;
   padding: 0;
   border: 0;
@@ -342,17 +342,17 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
   text-align: left;
 }
 
-.devcache-footnote svg { flex: 0 0 auto; margin-top: 2px; color: #4771c8; }
+.syncret-footnote svg { flex: 0 0 auto; margin-top: 2px; color: #4771c8; }
 
-.devcache-footnote div { display: flex; flex-direction: column; gap: 4px; }
-.devcache-footnote strong {
+.syncret-footnote div { display: flex; flex-direction: column; gap: 4px; }
+.syncret-footnote strong {
   color: #405a8e;
   font-size: 12px;
   letter-spacing: .14em;
   text-transform: uppercase;
 }
 
-.devcache-footnote span {
+.syncret-footnote span {
   color: #8090ae;
   font-size: 11px;
   line-height: 1.45;
@@ -664,9 +664,9 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
   .chat-panel { height: calc(100vh - 58px); grid-row: 2; }
   .chat-header { height: 62px; }
   .chat-panel { grid-template-rows: 62px minmax(0,1fr) auto; }
-  .devcache-login-card { padding: 18px 6px 24px; }
-  .devcache-logo { width: 116px; height: 116px; }
-  .devcache-logo-wrap { min-height: 116px; }
+  .syncret-login-card { padding: 18px 6px 24px; }
+  .syncret-logo { width: 116px; height: 116px; }
+  .syncret-logo-wrap { min-height: 116px; }
   .login-copy { margin: 24px 0 24px; }
   .neo-field { height: 61px; border-radius: 19px; }
   .neo-primary-button { min-height: 59px; border-radius: 20px; }
