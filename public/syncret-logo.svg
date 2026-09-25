@@ -1,0 +1,53 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="72" y1="64" x2="442" y2="448" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FCFF"/>
+      <stop offset=".5" stop-color="#E2EEFF"/>
+      <stop offset="1" stop-color="#CFE1FF"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="142" y1="183" x2="397" y2="405" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity=".93"/>
+      <stop offset=".52" stop-color="#E6F3FF" stop-opacity=".66"/>
+      <stop offset="1" stop-color="#BFD8FF" stop-opacity=".78"/>
+    </linearGradient>
+    <linearGradient id="core" x1="170" y1="238" x2="351" y2="361" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#19C4FF"/>
+      <stop offset=".48" stop-color="#176EF2"/>
+      <stop offset="1" stop-color="#4335E8"/>
+    </linearGradient>
+    <linearGradient id="smark" x1="207" y1="269" x2="307" y2="335" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#D7F6FF"/>
+    </linearGradient>
+    <filter id="shadow" x="74" y="52" width="370" height="408" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#2C65E8" flood-opacity=".24"/>
+    </filter>
+    <filter id="glow" x="133" y="213" width="246" height="188" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="9" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect x="40" y="40" width="432" height="432" rx="118" fill="url(#bg)"/>
+  <circle cx="116" cy="112" r="55" fill="#FFFFFF" fill-opacity=".4"/>
+  <circle cx="407" cy="388" r="72" fill="#73A5FF" fill-opacity=".15"/>
+
+  <g filter="url(#shadow)">
+    <path d="M188 214V177C188 126.4 218.9 95 260 95C301.1 95 332 126.4 332 177V217"
+      stroke="url(#glass)" stroke-width="42" stroke-linecap="round"/>
+    <path d="M188 214V177C188 126.4 218.9 95 260 95C301.1 95 332 126.4 332 177V217"
+      stroke="#5CA9FF" stroke-opacity=".4" stroke-width="17" stroke-linecap="round"/>
+
+    <path d="M116 226C116 208.3 130.3 194 148 194H233L267 221H364C381.7 221 396 235.3 396 253V364C396 383.9 379.9 400 360 400H152C132.1 400 116 383.9 116 364V226Z"
+      fill="url(#glass)" stroke="#FFFFFF" stroke-opacity=".9" stroke-width="5"/>
+
+    <rect x="157" y="242" width="198" height="120" rx="34"
+      fill="url(#core)" stroke="#72ECFF" stroke-width="3" filter="url(#glow)"/>
+
+    <path d="M296 273C280 262 255 259 235 268C219 275 214 289 226 298C236 305 253 307 269 310C287 313 298 321 291 331C282 344 250 347 222 334"
+      stroke="url(#smark)" stroke-width="14" stroke-linecap="round"/>
+
+    <path d="M139 221C153 208 167 205 187 205H229L255 226H365"
+      stroke="#FFFFFF" stroke-opacity=".58" stroke-width="8" stroke-linecap="round"/>
+  </g>
+</svg>
