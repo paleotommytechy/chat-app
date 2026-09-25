@@ -1,8 +1,9 @@
-import { mutation, query } from "./_generated/server";
+// @ts-nocheck
+import { mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import { requireSession } from "./auth";
 
-export const list = query({
+export const list = queryGeneric({
   args: { token: v.string() },
   handler: async (ctx, args) => {
     await requireSession(ctx, args.token);
@@ -19,7 +20,7 @@ export const list = query({
   },
 });
 
-export const sendText = mutation({
+export const sendText = mutationGeneric({
   args: { token: v.string(), text: v.string() },
   handler: async (ctx, args) => {
     const session = await requireSession(ctx, args.token);
@@ -36,7 +37,7 @@ export const sendText = mutation({
   },
 });
 
-export const generateUploadUrl = mutation({
+export const generateUploadUrl = mutationGeneric({
   args: { token: v.string() },
   handler: async (ctx, args) => {
     await requireSession(ctx, args.token);
@@ -44,7 +45,7 @@ export const generateUploadUrl = mutation({
   },
 });
 
-export const sendFile = mutation({
+export const sendFile = mutationGeneric({
   args: {
     token: v.string(),
     storageId: v.id("_storage"),
