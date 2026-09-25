@@ -2,6 +2,11 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  workspaceSecrets: defineTable({
+    fileEncryptionKey: v.string(),
+    createdAt: v.number(),
+  }),
+
   users: defineTable({
     displayName: v.string(),
     email: v.string(),
