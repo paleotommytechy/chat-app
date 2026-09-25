@@ -30,6 +30,7 @@ export const sendText = mutationGeneric({
 
     return ctx.db.insert("messages", {
       sender: session.displayName,
+      senderUserId: session.userId,
       kind: "text",
       text,
       createdAt: Date.now(),
@@ -63,6 +64,7 @@ export const sendFile = mutationGeneric({
 
     return ctx.db.insert("messages", {
       sender: session.displayName,
+      senderUserId: session.userId,
       kind: "file",
       storageId: args.storageId,
       fileName: args.fileName,
