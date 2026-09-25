@@ -1,26 +1,39 @@
-# FriendSpace
+# DevCache
 
-A small private collaboration space for friends: realtime chat, screenshots, general file sharing, and safer `.env` sharing.
+DevCache is a private realtime collaboration space for developers to chat, paste screenshots, share files, and exchange encrypted `.env` files.
 
 ## Stack
 
 - Next.js 16 + React 19
-- Convex database, realtime subscriptions, sessions, and file storage
+- Convex for realtime data, user accounts, sessions, and file storage
 - Vercel hosting
-- Web Crypto API for client-side AES-GCM encryption of `.env` files
+- Web Crypto API for client-side AES-GCM encryption of sensitive environment files
 
 ## Features
 
-- Shared private workspace protected by an access code
-- Realtime group chat
+- Email/password account creation and sign in
+- Realtime shared developer chat
 - Drag-and-drop file uploads up to 25 MB
-- Paste screenshots straight into the message composer
-- Filters for all messages, files, and screenshots
+- Paste screenshots directly into the message composer
+- Filters for messages, files, and screenshots
 - `.env`, `.env.*`, and `*.env` files encrypted before upload
-- Responsive desktop/mobile UI
+- Responsive desktop/mobile interface
+- Persistent or session-only login with Remember Me
 
-## Get started
+## Local development
 
-See [CONVEX_SETUP.md](./CONVEX_SETUP.md) for the exact setup and Vercel deployment steps.
+Run Convex in one terminal:
 
-> Important: do not commit actual secrets or access codes to this repository. For highly sensitive production credentials, prefer a dedicated secret manager even though FriendSpace encrypts `.env` files before upload.
+```powershell
+npx convex dev
+```
+
+Run Next.js in another terminal:
+
+```powershell
+npm run dev -- -p 3002
+```
+
+Then open `http://localhost:3002`.
+
+> For highly sensitive production credentials, a dedicated secrets manager is still safer than sharing credentials through any chat application.
