@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { mutationGeneric, queryGeneric } from "convex/server";
+import { anyApi, mutationGeneric, queryGeneric } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { requireSession } from "./auth";
 
@@ -27,6 +27,26 @@ function senderIdentity(session: any) {
 
 function publicError(code: string, message: string) {
   return new ConvexError({ code, message });
+}
+
+async function schedulePush(
+  ctx: any,
+  session: any,
+  messageId: any,
+  kind: "text" | "voice" | "file" | "screenshot",
+  channel: "general" | "screenshots" | "files",
+) {
+  const dispatchSecret = process.env.PUSH_DISPATCH_SECRET;
+  if (!dispatchSecret || !session.userId) return;
+
+  await ctx.scheduler.runAfter(0, anyApi.push.send, {
+    dispatchSecret,
+    senderUserId: session.userId,
+    senderName: session.displayName,
+    messageId,
+    kind,
+    channel,
+  });
 }
 
 export const list = queryGeneric({
@@ -73,7 +93,7 @@ export const sendText = mutationGeneric({
     }
 
     try {
-      return await ctx.db.insert("messages", {
+      const messageId = await ctx.db.insert("messages", {
         sender: session.displayName,
         ...senderIdentity(session),
         channel: "general",
@@ -81,6 +101,9 @@ export const sendText = mutationGeneric({
         text,
         createdAt: Date.now(),
       });
+
+      await schedulePush(ctx, session, messageId, "text", "general");
+      return messageId;
     } catch (error) {
       console.error("messages:sendText insert failed", error);
       throw publicError(
@@ -134,7 +157,7 @@ export const sendFile = mutationGeneric({
       }
     }
 
-    return ctx.db.insert("messages", {
+    const messageId = await ctx.db.insert("messages", {
       sender: session.displayName,
       ...senderIdentity(session),
       channel: args.channel,
@@ -146,6 +169,15 @@ export const sendFile = mutationGeneric({
       encrypted: args.encrypted,
       createdAt: Date.now(),
     });
+
+    await schedulePush(
+      ctx,
+      session,
+      messageId,
+      args.channel === "screenshots" ? "screenshot" : "file",
+      args.channel,
+    );
+    return messageId;
   },
 });
 
@@ -169,7 +201,7 @@ export const sendVoice = mutationGeneric({
       throw new Error("Voice notes are limited to 5 minutes.");
     }
 
-    return ctx.db.insert("messages", {
+    const messageId = await ctx.db.insert("messages", {
       sender: session.displayName,
       ...senderIdentity(session),
       channel: "general",
@@ -180,6 +212,9 @@ export const sendVoice = mutationGeneric({
       durationMs: args.durationMs,
       createdAt: Date.now(),
     });
+
+    await schedulePush(ctx, session, messageId, "voice", "general");
+    return messageId;
   },
 });
 
