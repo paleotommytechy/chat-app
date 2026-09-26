@@ -83,6 +83,18 @@ export async function requireSession(ctx: SessionCtx, token: string) {
       message: "Your session has expired. Please sign in again.",
     });
   }
+
+  if (!session.userId && session.email) {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", session.email))
+      .unique();
+
+    if (user) {
+      return { ...session, userId: user._id };
+    }
+  }
+
   return session;
 }
 
