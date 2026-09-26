@@ -3,6 +3,9 @@
 import Image from "next/image";
 import {
   ArrowRight,
+  Bell,
+  BellOff,
+  BellRing,
   Check,
   CircleAlert,
   Download,
@@ -74,6 +77,19 @@ function formatDuration(milliseconds = 0) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function urlBase64ToUint8Array(value: string) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = window.atob(base64);
+  const bytes = new Uint8Array(raw.length);
+
+  for (let index = 0; index < raw.length; index += 1) {
+    bytes[index] = raw.charCodeAt(index);
+  }
+
+  return bytes;
 }
 
 function initials(name: string) {
@@ -211,6 +227,8 @@ export function Syncret() {
   const sendFile = useMutation(api.messages.sendFile);
   const sendVoice = useMutation(api.messages.sendVoice);
   const deleteMessage = useMutation(api.messages.deleteMessage);
+  const registerPush = useMutation(api.notifications.register);
+  const unregisterPush = useMutation(api.notifications.unregister);
 
   const [token, setToken] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
@@ -232,6 +250,9 @@ export function Syncret() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Message | null>(null);
   const [deleteError, setDeleteError] = useState("");
+  const [notificationState, setNotificationState] = useState<
+    "loading" | "off" | "on" | "blocked" | "unsupported" | "unconfigured"
+  >("loading");
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -287,10 +308,84 @@ export function Syncret() {
     api.auth.fileEncryptionKey,
     token && session ? { token } : "skip",
   ) as string | null | undefined;
+  const notificationConfig = useQuery(
+    api.notifications.config,
+    token && session ? { token } : "skip",
+  ) as { enabled: boolean; publicKey: string | null } | undefined;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const space = params.get("space");
+
+    if (space === "general" || space === "screenshots" || space === "files") {
+      setChannel(space);
+    }
+  }, []);
 
   useEffect(() => {
     if (messages?.length) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages?.length, channel]);
+
+  useEffect(() => {
+    if (!token || !session || !notificationConfig) return;
+
+    if (
+      !("serviceWorker" in navigator) ||
+      !("PushManager" in window) ||
+      !("Notification" in window)
+    ) {
+      setNotificationState("unsupported");
+      return;
+    }
+
+    if (!notificationConfig.enabled || !notificationConfig.publicKey) {
+      setNotificationState("unconfigured");
+      return;
+    }
+
+    if (Notification.permission === "denied") {
+      setNotificationState("blocked");
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const registration = await navigator.serviceWorker.register("/sw.js");
+        const subscription = await registration.pushManager.getSubscription();
+
+        if (cancelled) return;
+
+        if (Notification.permission === "granted" && subscription) {
+          const json = subscription.toJSON();
+          const endpoint = json.endpoint;
+          const p256dh = json.keys?.p256dh;
+          const auth = json.keys?.auth;
+
+          if (endpoint && p256dh && auth) {
+            await registerPush({ token, endpoint, p256dh, auth });
+            if (!cancelled) setNotificationState("on");
+            return;
+          }
+        }
+
+        if (!cancelled) setNotificationState("off");
+      } catch {
+        if (!cancelled) setNotificationState("unsupported");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    token,
+    session,
+    notificationConfig?.enabled,
+    notificationConfig?.publicKey,
+    registerPush,
+  ]);
 
   useEffect(() => {
     if (channel !== "screenshots" || !token) return;
@@ -414,6 +509,120 @@ export function Syncret() {
     window.sessionStorage.removeItem("devcache-session-token");
     window.localStorage.removeItem("friendspace-session-token");
     setToken(null);
+  }
+
+  async function enableNotifications() {
+    if (!token || !notificationConfig) return;
+
+    if (
+      !("serviceWorker" in navigator) ||
+      !("PushManager" in window) ||
+      !("Notification" in window)
+    ) {
+      setNotificationState("unsupported");
+      setStatus("This browser does not support Syncret push notifications.");
+      return;
+    }
+
+    if (!notificationConfig.enabled || !notificationConfig.publicKey) {
+      setNotificationState("unconfigured");
+      setStatus("Push notifications still need to be configured on the Syncret backend.");
+      return;
+    }
+
+    if (Notification.permission === "denied") {
+      setNotificationState("blocked");
+      setStatus(
+        "Notifications are blocked in this browser. Allow them in the site settings, then try again.",
+      );
+      return;
+    }
+
+    try {
+      setNotificationState("loading");
+
+      const permission =
+        Notification.permission === "granted"
+          ? "granted"
+          : await Notification.requestPermission();
+
+      if (permission !== "granted") {
+        setNotificationState(permission === "denied" ? "blocked" : "off");
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
+
+      let subscription = await registration.pushManager.getSubscription();
+
+      if (!subscription) {
+        const applicationServerKey = urlBase64ToUint8Array(
+          notificationConfig.publicKey,
+        );
+
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey,
+        });
+      }
+
+      const json = subscription.toJSON();
+      const endpoint = json.endpoint;
+      const p256dh = json.keys?.p256dh;
+      const auth = json.keys?.auth;
+
+      if (!endpoint || !p256dh || !auth) {
+        throw new Error("The browser returned an incomplete push subscription.");
+      }
+
+      await registerPush({ token, endpoint, p256dh, auth });
+      setNotificationState("on");
+      setStatus("Notifications enabled. Syncret can now alert you when friends send something.");
+    } catch (error) {
+      setNotificationState("off");
+      setStatus(
+        friendlyActionError(
+          error,
+          "Syncret couldn't enable notifications on this browser.",
+        ),
+      );
+    }
+  }
+
+  async function disableNotifications() {
+    if (!token || !("serviceWorker" in navigator)) return;
+
+    try {
+      setNotificationState("loading");
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+
+      if (subscription) {
+        await unregisterPush({ token, endpoint: subscription.endpoint });
+        await subscription.unsubscribe();
+      }
+
+      setNotificationState("off");
+      setStatus("Notifications turned off for this browser.");
+    } catch (error) {
+      setNotificationState("on");
+      setStatus(
+        friendlyActionError(
+          error,
+          "Syncret couldn't turn notifications off. Please try again.",
+        ),
+      );
+    }
+  }
+
+  async function toggleNotifications() {
+    if (notificationState === "on") {
+      await disableNotifications();
+      return;
+    }
+
+    await enableNotifications();
   }
 
   async function handleSend() {
@@ -1155,9 +1364,51 @@ export function Syncret() {
             <h2>{channelMeta.title}</h2>
             <p>{channelMeta.subtitle}</p>
           </div>
-          <div className="header-status">
-            <Sparkles size={15} />
-            <span>Realtime via Convex</span>
+          <div className="header-actions">
+            <button
+              type="button"
+              className={`notification-toggle ${notificationState}`}
+              onClick={() => void toggleNotifications()}
+              disabled={
+                notificationState === "loading" ||
+                notificationState === "unsupported" ||
+                notificationState === "unconfigured"
+              }
+              title={
+                notificationState === "on"
+                  ? "Turn off notifications"
+                  : notificationState === "blocked"
+                    ? "Notifications are blocked in browser settings"
+                    : notificationState === "unconfigured"
+                      ? "Push notifications need backend configuration"
+                      : "Enable notifications"
+              }
+            >
+              {notificationState === "on" ? (
+                <BellRing size={15} />
+              ) : notificationState === "blocked" ||
+                notificationState === "unsupported" ? (
+                <BellOff size={15} />
+              ) : (
+                <Bell size={15} />
+              )}
+              <span>
+                {notificationState === "on"
+                  ? "Notifications on"
+                  : notificationState === "blocked"
+                    ? "Notifications blocked"
+                    : notificationState === "unconfigured"
+                      ? "Alerts not configured"
+                      : notificationState === "loading"
+                        ? "Checking alerts…"
+                        : "Enable alerts"}
+              </span>
+            </button>
+
+            <div className="header-status">
+              <Sparkles size={15} />
+              <span>Realtime via Convex</span>
+            </div>
           </div>
         </header>
 
