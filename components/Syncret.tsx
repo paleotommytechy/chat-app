@@ -189,12 +189,16 @@ export function Syncret() {
   const [status, setStatus] = useState("");
   const [dragging, setDragging] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Message | null>(null);
+  const [deleteError, setDeleteError] = useState("");
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
+  const deleteDialogRef = useRef<HTMLElement>(null);
+  const deleteCancelRef = useRef<HTMLButtonElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -268,6 +272,52 @@ export function Syncret() {
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
+
+  useEffect(() => {
+    if (!pendingDelete) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.requestAnimationFrame(() => deleteCancelRef.current?.focus());
+
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape" && !deletingId) {
+        setPendingDelete(null);
+        setDeleteError("");
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+
+      const dialog = deleteDialogRef.current;
+      if (!dialog) return;
+
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"),
+      );
+
+      if (!focusable.length) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [pendingDelete, deletingId]);
 
   async function handleLogin(event: FormEvent) {
     event.preventDefault();
@@ -573,27 +623,33 @@ export function Syncret() {
     }
   }
 
-  async function handleDelete(message: Message) {
-    if (!token || deletingId) return;
+  function requestDelete(message: Message) {
+    if (deletingId) return;
+    setDeleteError("");
+    setPendingDelete(message);
+  }
 
-    const label =
-      message.kind === "voice"
-        ? "voice note"
-        : message.kind === "file"
-          ? channel === "screenshots"
-            ? "screenshot"
-            : "file"
-          : "message";
+  function closeDeleteDialog() {
+    if (deletingId) return;
+    setPendingDelete(null);
+    setDeleteError("");
+  }
 
-    if (!window.confirm(`Delete this ${label}? This cannot be undone.`)) return;
+  async function confirmDelete() {
+    if (!token || !pendingDelete || deletingId) return;
 
-    setDeletingId(message._id);
+    setDeletingId(pendingDelete._id);
+    setDeleteError("");
     setStatus("");
 
     try {
-      await deleteMessage({ token, messageId: message._id as never });
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not delete this item.");
+      await deleteMessage({
+        token,
+        messageId: pendingDelete._id as never,
+      });
+      setPendingDelete(null);
+    } catch {
+      setDeleteError("Syncret couldn't delete this item. Please try again.");
     } finally {
       setDeletingId(null);
     }
@@ -804,6 +860,35 @@ export function Syncret() {
   }
 
   const currentName = session.displayName;
+  const deleteTargetType = pendingDelete
+    ? pendingDelete.kind === "voice"
+      ? "voice note"
+      : pendingDelete.kind === "file"
+        ? (pendingDelete.channel ?? channel) === "screenshots"
+          ? "screenshot"
+          : "file"
+        : "message"
+    : "item";
+
+  const deleteTargetTitle = pendingDelete
+    ? deleteTargetType === "message"
+      ? "Delete message?"
+      : deleteTargetType === "voice note"
+        ? "Delete voice note?"
+        : deleteTargetType === "screenshot"
+          ? "Delete screenshot?"
+          : "Delete file?"
+    : "";
+
+  const deleteTargetPreview = pendingDelete
+    ? pendingDelete.kind === "text"
+      ? pendingDelete.text?.trim() || "Empty message"
+      : pendingDelete.kind === "voice"
+        ? `Voice note · ${formatDuration(pendingDelete.durationMs)}`
+        : pendingDelete.fileName ||
+          (deleteTargetType === "screenshot" ? "Screenshot" : "Shared file")
+    : "";
+
   const channelMeta = {
     general: {
       title: "# general",
@@ -848,6 +933,114 @@ export function Syncret() {
               ? "Images only · up to 8 MB"
               : "Small files · up to 10 MB"}
           </span>
+        </div>
+      )}
+
+      {pendingDelete && (
+        <div
+          className="delete-dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeDeleteDialog();
+          }}
+        >
+          <section
+            ref={deleteDialogRef}
+            className="delete-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-dialog-title"
+            aria-describedby="delete-dialog-description"
+          >
+            <button
+              type="button"
+              className="delete-dialog-close"
+              onClick={closeDeleteDialog}
+              disabled={Boolean(deletingId)}
+              aria-label="Close delete confirmation"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="delete-dialog-icon" aria-hidden="true">
+              {deleteTargetType === "screenshot" ? (
+                <ImageIcon size={24} />
+              ) : deleteTargetType === "file" ? (
+                <FileText size={24} />
+              ) : deleteTargetType === "voice note" ? (
+                <Mic size={24} />
+              ) : (
+                <Trash2 size={24} />
+              )}
+            </div>
+
+            <div className="delete-dialog-copy">
+              <span className="delete-dialog-eyebrow">Permanent action</span>
+              <h3 id="delete-dialog-title">{deleteTargetTitle}</h3>
+              <p id="delete-dialog-description">
+                This {deleteTargetType} will be permanently removed from Syncret for everyone.
+              </p>
+            </div>
+
+            <div className="delete-dialog-preview">
+              <div className="delete-preview-icon" aria-hidden="true">
+                {deleteTargetType === "screenshot" ? (
+                  <ImageIcon size={17} />
+                ) : deleteTargetType === "file" ? (
+                  <FileText size={17} />
+                ) : deleteTargetType === "voice note" ? (
+                  <Mic size={17} />
+                ) : (
+                  <Hash size={17} />
+                )}
+              </div>
+              <div>
+                <strong>{deleteTargetType}</strong>
+                <span>{deleteTargetPreview}</span>
+              </div>
+            </div>
+
+            <div className="delete-dialog-warning">
+              <Trash2 size={15} />
+              <span>This action cannot be undone.</span>
+            </div>
+
+            {deleteError && (
+              <div className="delete-dialog-error" role="alert">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="delete-dialog-actions">
+              <button
+                ref={deleteCancelRef}
+                type="button"
+                className="delete-dialog-cancel"
+                onClick={closeDeleteDialog}
+                disabled={Boolean(deletingId)}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                className="delete-dialog-confirm"
+                onClick={() => void confirmDelete()}
+                disabled={Boolean(deletingId)}
+              >
+                {deletingId ? (
+                  <>
+                    <span className="delete-spinner" aria-hidden="true" />
+                    Deleting…
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={16} />
+                    Delete {deleteTargetType}
+                  </>
+                )}
+              </button>
+            </div>
+          </section>
         </div>
       )}
 
@@ -958,7 +1151,7 @@ export function Syncret() {
                   {ownedByMe && (
                     <button
                       className="message-delete"
-                      onClick={() => void handleDelete(message)}
+                      onClick={() => requestDelete(message)}
                       disabled={deletingId === message._id}
                       title="Delete"
                       aria-label="Delete this item"
