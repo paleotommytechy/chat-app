@@ -37,6 +37,8 @@ Syncret is a small private realtime workspace for developers to communicate with
 - Email/password account creation and sign in
 - Realtime updates through Convex
 - Sender-only deletion enforced by the backend
+- Browser push notifications for new messages, voice notes, screenshots, and files
+- Notification clicks reopen Syncret in the relevant space
 - Persistent or session-only login with Remember Me
 - Responsive desktop/mobile interface
 
@@ -54,6 +56,33 @@ For a Vercel deployment, add `NEXT_PUBLIC_CONVEX_URL` in the Vercel project's En
 
 No workspace encryption secret is required in Vercel: Syncret provisions and stores the shared file-encryption key inside the authenticated Convex backend.
 
+### Push notification environment variables
+
+Push delivery is sent by Convex, so these variables belong on the **Convex deployment**, not in Vercel:
+
+```env
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:your-contact@example.com
+PUSH_DISPATCH_SECRET=
+```
+
+Generate the VAPID key pair after installing dependencies:
+
+```powershell
+npm run vapid:generate
+```
+
+Generate a random dispatch secret:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Set the four variables on the development Convex deployment with `npx convex env set ...`, and set the same variable names on production with `npx convex env --prod set ...`.
+
+Keep the private key and dispatch secret out of GitHub and Vercel. The VAPID public key is returned to authenticated Syncret clients by Convex when they enable notifications.
+
 ## Local development
 
 Run Convex in one terminal:
@@ -70,7 +99,9 @@ npm run dev -- -p 3002
 
 Then open `http://localhost:3002`.
 
-Voice recording requires microphone permission. It works on secure origins such as HTTPS and on `localhost`.
+Voice recording requires microphone permission. Push notifications require notification permission plus a service worker. Both work on secure origins such as HTTPS; browser development support also permits service workers on `localhost`.
+
+Syncret only asks for notification permission after the user clicks **Enable alerts**. Push notifications are suppressed while a Syncret window is already visible, because the realtime UI is already active.
 
 ## Deployment workflow
 
