@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { mutationGeneric, queryGeneric } from "convex/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 const SESSION_LIFETIME = 1000 * 60 * 60 * 24 * 14;
 const HASH_ITERATIONS = 240_000;
@@ -78,7 +78,10 @@ export async function requireSession(ctx: SessionCtx, token: string) {
     .unique();
 
   if (!session || session.expiresAt < Date.now()) {
-    throw new Error("Your session has expired. Please sign in again.");
+    throw new ConvexError({
+      code: "SESSION_EXPIRED",
+      message: "Your session has expired. Please sign in again.",
+    });
   }
   return session;
 }
