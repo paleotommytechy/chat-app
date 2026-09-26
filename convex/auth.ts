@@ -164,9 +164,9 @@ export const session = queryGeneric({
 
     if (!session || session.expiresAt < Date.now()) return null;
     return {
-      userId: session.userId,
+      ...(session.userId ? { userId: session.userId } : {}),
       displayName: session.displayName,
-      email: session.email,
+      ...(session.email ? { email: session.email } : {}),
       expiresAt: session.expiresAt,
     };
   },
