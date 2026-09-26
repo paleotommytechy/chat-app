@@ -161,6 +161,47 @@ function friendlyAuthError(error: unknown, mode: "signin" | "signup") {
   };
 }
 
+function friendlyActionError(error: unknown, fallback: string) {
+  const data = (error as { data?: unknown } | null)?.data;
+
+  if (data && typeof data === "object") {
+    const payload = data as { code?: unknown; message?: unknown };
+
+    if (
+      payload.code === "SESSION_EXPIRED" ||
+      payload.code === "SESSION_REFRESH_REQUIRED"
+    ) {
+      return "Your session needs to be refreshed. Sign out and sign in again.";
+    }
+
+    if (typeof payload.message === "string" && payload.message.trim()) {
+      return payload.message;
+    }
+  }
+
+  const raw = error instanceof Error ? error.message : "";
+  const normalized = raw.toLowerCase();
+
+  if (
+    normalized.includes("[convex") ||
+    normalized.includes("server error") ||
+    normalized.includes("called by client") ||
+    normalized.includes("request id")
+  ) {
+    return fallback;
+  }
+
+  if (
+    normalized.includes("network") ||
+    normalized.includes("fetch failed") ||
+    normalized.includes("failed to fetch")
+  ) {
+    return "Check your internet connection and try again.";
+  }
+
+  return fallback;
+}
+
 export function Syncret() {
   const signup = useMutation(api.auth.signup);
   const login = useMutation(api.auth.login);
@@ -384,7 +425,12 @@ export function Syncret() {
       await sendText({ token, text: body });
     } catch (error) {
       setText(body);
-      setStatus(error instanceof Error ? error.message : "Message failed to send.");
+      setStatus(
+        friendlyActionError(
+          error,
+          "Syncret couldn't send this message. Please try again.",
+        ),
+      );
     }
   }
 
@@ -460,7 +506,9 @@ export function Syncret() {
             : "File shared.",
       );
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Upload failed.");
+      setStatus(
+        friendlyActionError(error, "Syncret couldn't upload this item. Please try again."),
+      );
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -496,7 +544,9 @@ export function Syncret() {
         durationMs,
       });
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Voice note failed to send.");
+      setStatus(
+        friendlyActionError(error, "Syncret couldn't send this voice note. Please try again."),
+      );
     } finally {
       setUploading(false);
     }
@@ -619,7 +669,9 @@ export function Syncret() {
       anchor.remove();
       URL.revokeObjectURL(url);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Download failed.");
+      setStatus(
+        friendlyActionError(error, "Syncret couldn't download this file. Please try again."),
+      );
     }
   }
 
