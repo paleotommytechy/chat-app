@@ -4,7 +4,13 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Syncret",
-  description: "A private realtime workspace for developers to chat, share screenshots, files, encrypted environment files, and voice notes.",
+  applicationName: "Syncret",
+  description: "A private realtime workspace for developers to chat, share screenshots, files, encrypted environment files, voice notes, and push notifications.",
+  appleWebApp: {
+    capable: true,
+    title: "Syncret",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
