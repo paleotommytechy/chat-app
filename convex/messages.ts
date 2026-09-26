@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { mutationGeneric, queryGeneric } from "convex/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { requireSession } from "./auth";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -21,6 +21,14 @@ function effectiveChannel(message: any) {
   return "files";
 }
 
+function senderIdentity(session: any) {
+  return session.userId ? { senderUserId: session.userId } : {};
+}
+
+function publicError(code: string, message: string) {
+  return new ConvexError({ code, message });
+}
+
 export const list = queryGeneric({
   args: { token: v.string(), channel: channelValidator },
   handler: async (ctx, args) => {
@@ -36,13 +44,17 @@ export const list = queryGeneric({
       .slice(0, 150);
 
     const hydrated = await Promise.all(
-      matching.map(async (message) => ({
-        ...message,
-        channel: effectiveChannel(message),
-        fileUrl: message.storageId
+      matching.map(async (message) => {
+        const fileUrl = message.storageId
           ? await ctx.storage.getUrl(message.storageId)
-          : undefined,
-      })),
+          : null;
+
+        return {
+          ...message,
+          channel: effectiveChannel(message),
+          ...(fileUrl ? { fileUrl } : {}),
+        };
+      }),
     );
 
     return hydrated.reverse();
@@ -54,17 +66,28 @@ export const sendText = mutationGeneric({
   handler: async (ctx, args) => {
     const session = await requireSession(ctx, args.token);
     const text = args.text.trim();
-    if (!text) return null;
-    if (text.length > 5000) throw new Error("Message is too long.");
 
-    return ctx.db.insert("messages", {
-      sender: session.displayName,
-      senderUserId: session.userId,
-      channel: "general",
-      kind: "text",
-      text,
-      createdAt: Date.now(),
-    });
+    if (!text) return null;
+    if (text.length > 5000) {
+      throw publicError("MESSAGE_TOO_LONG", "Messages are limited to 5,000 characters.");
+    }
+
+    try {
+      return await ctx.db.insert("messages", {
+        sender: session.displayName,
+        ...senderIdentity(session),
+        channel: "general",
+        kind: "text",
+        text,
+        createdAt: Date.now(),
+      });
+    } catch (error) {
+      console.error("messages:sendText insert failed", error);
+      throw publicError(
+        "MESSAGE_SEND_FAILED",
+        "Syncret couldn't send this message. Please try again.",
+      );
+    }
   },
 });
 
@@ -113,7 +136,7 @@ export const sendFile = mutationGeneric({
 
     return ctx.db.insert("messages", {
       sender: session.displayName,
-      senderUserId: session.userId,
+      ...senderIdentity(session),
       channel: args.channel,
       kind: "file",
       storageId: args.storageId,
@@ -148,7 +171,7 @@ export const sendVoice = mutationGeneric({
 
     return ctx.db.insert("messages", {
       sender: session.displayName,
-      senderUserId: session.userId,
+      ...senderIdentity(session),
       channel: "general",
       kind: "voice",
       storageId: args.storageId,
@@ -167,8 +190,14 @@ export const deleteMessage = mutationGeneric({
     const message = await ctx.db.get(args.messageId);
 
     if (!message) return { deleted: false };
+    if (!session.userId) {
+      throw publicError(
+        "SESSION_REFRESH_REQUIRED",
+        "Please sign out and sign back in before deleting items.",
+      );
+    }
     if (!message.senderUserId || message.senderUserId !== session.userId) {
-      throw new Error("You can only delete messages you sent.");
+      throw publicError("DELETE_NOT_ALLOWED", "You can only delete items you sent.");
     }
 
     if (message.storageId) {
