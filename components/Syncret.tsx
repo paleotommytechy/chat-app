@@ -4,6 +4,7 @@ import Image from "next/image";
 import {
   ArrowRight,
   Check,
+  CircleAlert,
   Download,
   Eye,
   EyeOff,
@@ -94,6 +95,72 @@ function supportedAudioMimeType() {
   return candidates.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
 }
 
+function friendlyAuthError(error: unknown, mode: "signin" | "signup") {
+  const raw = error instanceof Error ? error.message : "";
+  const message = raw.toLowerCase();
+
+  if (message.includes("incorrect email or password")) {
+    return {
+      message: "Check your email and password, then try again.",
+      credentialError: true,
+      title: "Email or password doesn't match",
+    };
+  }
+
+  if (message.includes("account already exists")) {
+    return {
+      message: "An account already exists with this email. Sign in instead.",
+      credentialError: false,
+      title: "Account already exists",
+    };
+  }
+
+  if (message.includes("valid email")) {
+    return {
+      message: "Enter a valid email address.",
+      credentialError: false,
+      title: "Check your email address",
+    };
+  }
+
+  if (message.includes("password must be between")) {
+    return {
+      message: "Use a password with at least 8 characters.",
+      credentialError: false,
+      title: "Password is too short",
+    };
+  }
+
+  if (message.includes("name between")) {
+    return {
+      message: "Use a name between 2 and 40 characters.",
+      credentialError: false,
+      title: "Check your name",
+    };
+  }
+
+  if (
+    message.includes("network") ||
+    message.includes("fetch failed") ||
+    message.includes("failed to fetch")
+  ) {
+    return {
+      message: "Check your internet connection and try again.",
+      credentialError: false,
+      title: "Syncret couldn't connect",
+    };
+  }
+
+  return {
+    message:
+      mode === "signin"
+        ? "We couldn't sign you in right now. Please try again."
+        : "We couldn't create your account right now. Please try again.",
+    credentialError: false,
+    title: mode === "signin" ? "Sign in failed" : "Account creation failed",
+  };
+}
+
 export function Syncret() {
   const signup = useMutation(api.auth.signup);
   const login = useMutation(api.auth.login);
@@ -112,6 +179,8 @@ export function Syncret() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [loginError, setLoginError] = useState("");
+  const [loginErrorTitle, setLoginErrorTitle] = useState("");
+  const [credentialError, setCredentialError] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const [channel, setChannel] = useState<Channel>("general");
@@ -125,6 +194,7 @@ export function Syncret() {
   const [recordingSeconds, setRecordingSeconds] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -202,6 +272,8 @@ export function Syncret() {
   async function handleLogin(event: FormEvent) {
     event.preventDefault();
     setLoginError("");
+    setLoginErrorTitle("");
+    setCredentialError(false);
     setIsLoggingIn(true);
     try {
       const nextToken = makeSessionToken();
@@ -218,7 +290,17 @@ export function Syncret() {
       setToken(nextToken);
       setPassword("");
     } catch (error) {
-      setLoginError(error instanceof Error ? error.message : "Could not sign in.");
+      const friendly = friendlyAuthError(error, authMode);
+      setLoginError(friendly.message);
+      setLoginErrorTitle(friendly.title);
+      setCredentialError(friendly.credentialError);
+
+      if (friendly.credentialError) {
+        window.requestAnimationFrame(() => {
+          passwordInputRef.current?.focus();
+          passwordInputRef.current?.select();
+        });
+      }
     } finally {
       setIsLoggingIn(false);
     }
@@ -575,7 +657,14 @@ export function Syncret() {
                 <UserRound size={21} />
                 <input
                   value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
+                  onChange={(e) => {
+                    setDisplayName(e.target.value);
+                    if (loginError) {
+                      setLoginError("");
+                      setLoginErrorTitle("");
+                      setCredentialError(false);
+                    }
+                  }}
                   placeholder="Your name"
                   autoComplete="name"
                   required
@@ -583,27 +672,46 @@ export function Syncret() {
               </label>
             )}
 
-            <label className="neo-field">
+            <label className={`neo-field ${credentialError ? "field-error" : ""}`}>
               <Mail size={21} />
               <input
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (loginError) {
+                    setLoginError("");
+                    setLoginErrorTitle("");
+                    setCredentialError(false);
+                  }
+                }}
                 type="email"
                 placeholder="Email"
                 autoComplete="email"
+                aria-invalid={credentialError || undefined}
+                aria-describedby={loginError ? "auth-error" : undefined}
                 required
               />
             </label>
 
-            <label className="neo-field">
+            <label className={`neo-field ${credentialError ? "field-error" : ""}`}>
               <LockKeyhole size={21} />
               <input
+                ref={passwordInputRef}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (loginError) {
+                    setLoginError("");
+                    setLoginErrorTitle("");
+                    setCredentialError(false);
+                  }
+                }}
                 type={showPassword ? "text" : "password"}
                 placeholder={signingUp ? "Password · at least 8 characters" : "Password"}
                 autoComplete={signingUp ? "new-password" : "current-password"}
                 minLength={8}
+                aria-invalid={credentialError || undefined}
+                aria-describedby={loginError ? "auth-error" : undefined}
                 required
               />
               <button
@@ -630,7 +738,21 @@ export function Syncret() {
               </div>
             )}
 
-            {loginError && <div className="error-note">{loginError}</div>}
+            {loginError && (
+              <div
+                id="auth-error"
+                className={`error-note auth-error-note ${credentialError ? "credentials-error" : ""}`}
+                role="alert"
+                aria-live="assertive"
+              >
+                <CircleAlert size={18} />
+                <div>
+                  <strong>{loginErrorTitle}</strong>
+                  <span>{loginError}</span>
+                  {credentialError && <small>Passwords are case-sensitive.</small>}
+                </div>
+              </div>
+            )}
 
             <button className="primary-button neo-primary-button" type="submit" disabled={isLoggingIn}>
               <span>{isLoggingIn ? "Please wait…" : signingUp ? "Create Account" : "Login"}</span>
@@ -647,6 +769,8 @@ export function Syncret() {
                 onClick={() => {
                   setAuthMode(signingUp ? "signin" : "signup");
                   setLoginError("");
+                  setLoginErrorTitle("");
+                  setCredentialError(false);
                   setPassword("");
                 }}
               >
