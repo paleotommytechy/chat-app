@@ -24,6 +24,17 @@ export default defineSchema({
     expiresAt: v.number(),
   }).index("by_token", ["token"]),
 
+  pushSubscriptions: defineTable({
+    userId: v.id("users"),
+    endpoint: v.string(),
+    p256dh: v.string(),
+    auth: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_endpoint", ["endpoint"])
+    .index("by_user", ["userId"]),
+
   messages: defineTable({
     sender: v.string(),
     senderUserId: v.optional(v.id("users")),
