@@ -30,7 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { anyApi } from "convex/server";
 import { decryptSensitiveFile, encryptSensitiveFile, isSensitiveEnvFile } from "@/lib/crypto";
 
@@ -57,7 +57,6 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_SCREENSHOT_SIZE = 8 * 1024 * 1024;
 const MAX_VOICE_SIZE = 6 * 1024 * 1024;
 const MAX_VOICE_SECONDS = 5 * 60;
-const PUBLIC_VAPID_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
 
 function makeSessionToken() {
   return `${crypto.randomUUID()}-${crypto.randomUUID()}`;
@@ -220,6 +219,7 @@ function friendlyActionError(error: unknown, fallback: string) {
 }
 
 export function Syncret() {
+  const convex = useConvex();
   const signup = useMutation(api.auth.signup);
   const login = useMutation(api.auth.login);
   const logoutMutation = useMutation(api.auth.logout);
@@ -332,11 +332,6 @@ export function Syncret() {
       !("Notification" in window)
     ) {
       setNotificationState("unsupported");
-      return;
-    }
-
-    if (!PUBLIC_VAPID_KEY) {
-      setNotificationState("unconfigured");
       return;
     }
 
@@ -519,12 +514,6 @@ export function Syncret() {
       return;
     }
 
-    if (!PUBLIC_VAPID_KEY) {
-      setNotificationState("unconfigured");
-      setStatus("Push notifications are not configured for this Syncret deployment yet.");
-      return;
-    }
-
     if (Notification.permission === "denied") {
       setNotificationState("blocked");
       setStatus(
@@ -535,6 +524,18 @@ export function Syncret() {
 
     try {
       setNotificationState("loading");
+
+      const config = (await convex.query(api.notifications.config, {
+        token,
+      })) as { enabled: boolean; publicKey: string | null };
+
+      if (!config.enabled || !config.publicKey) {
+        setNotificationState("unconfigured");
+        setStatus(
+          "Push notifications are not configured on the Syncret backend yet.",
+        );
+        return;
+      }
 
       const permission =
         Notification.permission === "granted"
@@ -553,7 +554,7 @@ export function Syncret() {
 
       if (!subscription) {
         const applicationServerKey = urlBase64ToUint8Array(
-          PUBLIC_VAPID_KEY,
+          config.publicKey,
         );
 
         subscription = await registration.pushManager.subscribe({
@@ -575,12 +576,19 @@ export function Syncret() {
       setNotificationState("on");
       setStatus("Notifications enabled. Syncret can now alert you when friends send something.");
     } catch (error) {
-      setNotificationState("off");
+      const raw = error instanceof Error ? error.message.toLowerCase() : "";
+      const backendMissing =
+        raw.includes("could not find public function") ||
+        raw.includes("notifications:config");
+
+      setNotificationState(backendMissing ? "unconfigured" : "off");
       setStatus(
-        friendlyActionError(
-          error,
-          "Syncret couldn't enable notifications on this browser.",
-        ),
+        backendMissing
+          ? "Push notifications are not active on the Syncret backend yet."
+          : friendlyActionError(
+              error,
+              "Syncret couldn't enable notifications on this browser.",
+            ),
       );
     }
   }
