@@ -57,6 +57,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_SCREENSHOT_SIZE = 8 * 1024 * 1024;
 const MAX_VOICE_SIZE = 6 * 1024 * 1024;
 const MAX_VOICE_SECONDS = 5 * 60;
+const PUBLIC_VAPID_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
 
 function makeSessionToken() {
   return `${crypto.randomUUID()}-${crypto.randomUUID()}`;
@@ -308,10 +309,6 @@ export function Syncret() {
     api.auth.fileEncryptionKey,
     token && session ? { token } : "skip",
   ) as string | null | undefined;
-  const notificationConfig = useQuery(
-    api.notifications.config,
-    token && session ? { token } : "skip",
-  ) as { enabled: boolean; publicKey: string | null } | undefined;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -327,7 +324,7 @@ export function Syncret() {
   }, [messages?.length, channel]);
 
   useEffect(() => {
-    if (!token || !session || !notificationConfig) return;
+    if (!token || !session) return;
 
     if (
       !("serviceWorker" in navigator) ||
@@ -338,7 +335,7 @@ export function Syncret() {
       return;
     }
 
-    if (!notificationConfig.enabled || !notificationConfig.publicKey) {
+    if (!PUBLIC_VAPID_KEY) {
       setNotificationState("unconfigured");
       return;
     }
@@ -364,8 +361,12 @@ export function Syncret() {
           const auth = json.keys?.auth;
 
           if (endpoint && p256dh && auth) {
-            await registerPush({ token, endpoint, p256dh, auth });
-            if (!cancelled) setNotificationState("on");
+            try {
+              await registerPush({ token, endpoint, p256dh, auth });
+              if (!cancelled) setNotificationState("on");
+            } catch {
+              if (!cancelled) setNotificationState("off");
+            }
             return;
           }
         }
@@ -379,13 +380,7 @@ export function Syncret() {
     return () => {
       cancelled = true;
     };
-  }, [
-    token,
-    session,
-    notificationConfig?.enabled,
-    notificationConfig?.publicKey,
-    registerPush,
-  ]);
+  }, [token, session, registerPush]);
 
   useEffect(() => {
     if (channel !== "screenshots" || !token) return;
@@ -512,7 +507,7 @@ export function Syncret() {
   }
 
   async function enableNotifications() {
-    if (!token || !notificationConfig) return;
+    if (!token) return;
 
     if (
       !("serviceWorker" in navigator) ||
@@ -524,9 +519,9 @@ export function Syncret() {
       return;
     }
 
-    if (!notificationConfig.enabled || !notificationConfig.publicKey) {
+    if (!PUBLIC_VAPID_KEY) {
       setNotificationState("unconfigured");
-      setStatus("Push notifications still need to be configured on the Syncret backend.");
+      setStatus("Push notifications are not configured for this Syncret deployment yet.");
       return;
     }
 
@@ -558,7 +553,7 @@ export function Syncret() {
 
       if (!subscription) {
         const applicationServerKey = urlBase64ToUint8Array(
-          notificationConfig.publicKey,
+          PUBLIC_VAPID_KEY,
         );
 
         subscription = await registration.pushManager.subscribe({
