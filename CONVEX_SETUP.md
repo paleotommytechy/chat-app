@@ -96,13 +96,27 @@ npx convex env --prod set PUSH_DISPATCH_SECRET
 
 These are **Convex** environment variables. Do not add the private VAPID key or dispatch secret to Vercel.
 
+After setting the production variables, verify them without printing their values:
+
+```powershell
+npx convex env --prod list --names-only
+```
+
+Then publish the latest backend functions:
+
+```powershell
+npx convex deploy
+```
+
 Users opt in from the bell control in Syncret. The browser then stores a Web Push subscription in Convex. When another authenticated user sends a text message, voice note, screenshot, or file, Convex sends a push to the subscribed browsers of the other users.
+
+If the UI says **"Push notifications are not active on the Syncret backend yet"**, `notifications:config` is not available in the production Convex deployment. Pull the latest `main` and run `npx convex deploy`.
+
+If the UI lists missing variable names instead, the notification backend is deployed correctly; add those missing values to the production Convex environment.
 
 Push notifications deliberately do not include the actual chat message or file contents, so private developer content is not exposed on a device lock screen.
 
 ## 5. Deploy the Convex backend you want to use
-
-## 4. Deploy the Convex backend you want to use
 
 For a production backend, deploy Convex separately from the frontend:
 
@@ -127,6 +141,25 @@ That is the only Vercel environment variable currently required by the Syncret f
 You do not need `WORKSPACE_ACCESS_CODE`: Syncret now uses individual email/password accounts.
 
 You also do not need a file-encryption secret in Vercel. Syncret generates the shared encryption key in the authenticated Convex backend.
+
+## 7. Install Syncret on a phone
+
+Syncret now includes a web app manifest, a root-scoped service worker, standalone display metadata, and an in-app installation prompt.
+
+On Android/Chrome:
+
+1. Open the production Syncret HTTPS URL.
+2. Sign in.
+3. Tap **Install Syncret** when it appears, or use Chrome's menu and choose **Install app** / **Add to Home screen**.
+4. Open the installed Syncret app from the Home Screen.
+5. Tap **Enable alerts** and allow notifications.
+
+On iPhone/iPad:
+
+1. Open Syncret in Safari or another browser that can add web apps to the Home Screen.
+2. Use **Share → Add to Home Screen**.
+3. Launch Syncret from its Home Screen icon.
+4. Sign in and tap **Enable alerts**.
 
 ## Security notes
 
