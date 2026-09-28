@@ -22,15 +22,19 @@ export const config = queryGeneric({
   args: { token: v.string() },
   handler: async (ctx, args) => {
     await requireSession(ctx, args.token);
+
     const publicKey = process.env.VAPID_PUBLIC_KEY ?? null;
+    const missing = [
+      !publicKey ? "VAPID_PUBLIC_KEY" : null,
+      !process.env.VAPID_PRIVATE_KEY ? "VAPID_PRIVATE_KEY" : null,
+      !process.env.VAPID_SUBJECT ? "VAPID_SUBJECT" : null,
+      !process.env.PUSH_DISPATCH_SECRET ? "PUSH_DISPATCH_SECRET" : null,
+    ].filter(Boolean);
+
     return {
-      enabled: Boolean(
-        publicKey &&
-          process.env.VAPID_PRIVATE_KEY &&
-          process.env.VAPID_SUBJECT &&
-          process.env.PUSH_DISPATCH_SECRET,
-      ),
+      enabled: missing.length === 0,
       publicKey,
+      missing,
     };
   },
 });
