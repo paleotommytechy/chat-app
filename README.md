@@ -37,6 +37,7 @@ Syncret is a small private realtime workspace for developers to communicate with
 - Email/password account creation and sign in
 - Realtime updates through Convex
 - Sender-only deletion enforced by the backend
+- Installable Progressive Web App (PWA) experience on supported phones/desktops
 - Browser push notifications for new messages, voice notes, screenshots, and files
 - Notification clicks reopen Syncret in the relevant space
 - Persistent or session-only login with Remember Me
@@ -83,6 +84,26 @@ Set the four variables on the development Convex deployment with `npx convex env
 
 Keep the private key and dispatch secret out of GitHub and Vercel. The VAPID public key is returned to authenticated Syncret clients by Convex when they enable notifications.
 
+Before testing production alerts, verify the production Convex deployment has both the functions and variables:
+
+```powershell
+npx convex env --prod list --names-only
+npx convex deploy
+```
+
+The environment variable list should include:
+
+```text
+VAPID_PUBLIC_KEY
+VAPID_PRIVATE_KEY
+VAPID_SUBJECT
+PUSH_DISPATCH_SECRET
+```
+
+If Syncret says **"Push notifications are not active on the Syncret backend yet"**, the production deployment does not yet expose the notification functions, so run `npx convex deploy` from the latest `main`.
+
+If Syncret says the backend is deployed but lists missing variables, add those variables to the production Convex deployment and retry.
+
 ## Local development
 
 Run Convex in one terminal:
@@ -101,7 +122,13 @@ Then open `http://localhost:3002`.
 
 Voice recording requires microphone permission. Push notifications require notification permission plus a service worker. Both work on secure origins such as HTTPS; browser development support also permits service workers on `localhost`.
 
-Syncret only asks for notification permission after the user clicks **Enable alerts**. Push notifications are suppressed while a Syncret window is already visible, because the realtime UI is already active.
+Syncret registers its service worker independently of notification permission. It only asks for notification permission after the user clicks **Enable alerts**. Push notifications are suppressed while a Syncret window is already visible, because the realtime UI is already active.
+
+### Installing Syncret as a PWA
+
+On Chromium-based browsers such as Chrome on Android, Syncret shows an **Install Syncret** control when the browser exposes the PWA installation prompt. You can also use the browser menu and choose **Install app** or **Add to Home screen**.
+
+On iPhone/iPad, add Syncret to the Home Screen first. Open the installed Home Screen app, sign in, then tap **Enable alerts**.
 
 ## Deployment workflow
 
