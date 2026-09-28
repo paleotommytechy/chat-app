@@ -1,6 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { ConvexClientProvider } from "@/components/ConvexClientProvider";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  themeColor: "#090b11",
+  colorScheme: "dark",
+};
 
 export const metadata: Metadata = {
   title: "Syncret",
