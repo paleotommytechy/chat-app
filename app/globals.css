@@ -514,6 +514,31 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
 }
 .header-status svg { color: #9b8eff; }
 
+.pwa-install-button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgba(139,124,255,.18);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(139,124,255,.07);
+  color: #c8c0ff;
+  font-size: 10.5px;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    border-color .16s ease,
+    background .16s ease,
+    transform .16s ease;
+}
+
+.pwa-install-button:hover {
+  border-color: rgba(139,124,255,.3);
+  background: rgba(139,124,255,.12);
+  transform: translateY(-1px);
+}
+
 .notification-toggle {
   min-height: 32px;
   padding: 0 10px;
@@ -602,6 +627,157 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
   background: rgba(255, 124, 143, .07);
 }
 .message-delete:disabled { opacity: .3; cursor: wait; }
+
+.install-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(3, 5, 9, .72);
+  backdrop-filter: blur(14px) saturate(.82);
+  animation: deleteBackdropIn .16s ease-out;
+}
+
+.install-dialog {
+  width: min(100%, 430px);
+  position: relative;
+  padding: 28px;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 22% 0%, rgba(93,79,237,.13), transparent 34%),
+    linear-gradient(180deg, rgba(23,26,36,.99), rgba(12,15,23,.995));
+  box-shadow:
+    0 32px 90px rgba(0,0,0,.58),
+    inset 0 1px 0 rgba(255,255,255,.05);
+  animation: deleteDialogIn .2s cubic-bezier(.22,.82,.32,1);
+}
+
+.install-dialog-close {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: #70798a;
+  cursor: pointer;
+}
+
+.install-dialog-close:hover {
+  border-color: var(--line);
+  background: rgba(255,255,255,.04);
+  color: #dfe3eb;
+}
+
+.install-dialog-logo {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 18px;
+  border-radius: 19px;
+  overflow: hidden;
+  background: #eaf3ff;
+  box-shadow: 0 14px 30px rgba(51,80,190,.18);
+}
+
+.install-dialog-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.install-dialog-eyebrow {
+  display: block;
+  margin-bottom: 7px;
+  color: #8f84e8;
+  font-size: 9.5px;
+  font-weight: 850;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.install-dialog h3 {
+  margin: 0;
+  color: #f2f4f8;
+  font-size: 21px;
+  line-height: 1.25;
+  letter-spacing: -.025em;
+}
+
+.install-dialog > p {
+  margin: 10px 0 0;
+  color: #8992a3;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.install-steps {
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: install-step;
+  display: grid;
+  gap: 10px;
+}
+
+.install-steps li {
+  counter-increment: install-step;
+  position: relative;
+  min-height: 42px;
+  padding: 10px 12px 10px 46px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  background: rgba(255,255,255,.018);
+  color: #aeb6c5;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.install-steps li::before {
+  content: counter(install-step);
+  position: absolute;
+  left: 12px;
+  width: 23px;
+  height: 23px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: rgba(139,124,255,.11);
+  color: #bcb4ff;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.install-steps strong {
+  margin: 0 3px;
+  color: #e6e8ed;
+}
+
+.install-dialog-done {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 20px;
+  border: 1px solid rgba(139,124,255,.2);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #7668ed, #6354d8);
+  color: white;
+  font-size: 11.5px;
+  font-weight: 850;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(75,57,190,.18);
+}
+
+.install-dialog-done:hover {
+  background: linear-gradient(180deg, #8174f5, #6b5ce0);
+}
 
 .delete-dialog-backdrop {
   position: fixed;
@@ -1038,6 +1214,8 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
   .header-status { padding: 7px; }
   .notification-toggle span { display: none; }
   .notification-toggle { width: 32px; padding: 0; justify-content: center; }
+  .pwa-install-button span { display: none; }
+  .pwa-install-button { width: 32px; padding: 0; justify-content: center; }
   .message-scroll { padding: 20px 14px; }
   .composer-wrap { padding: 10px 12px 12px; }
   .composer-help { display: none; }
@@ -1070,6 +1248,14 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
   .auth-alternative p { font-size: 11px; }
   .message-body { padding-right: 32px; }
   .message-delete { width: 28px; height: 28px; }
+  .install-dialog-backdrop { padding: 14px; align-items: end; }
+  .install-dialog {
+    width: 100%;
+    padding: 24px 18px 18px;
+    border-radius: 22px 22px 18px 18px;
+  }
+  .install-dialog-logo { width: 58px; height: 58px; }
+  .install-dialog h3 { font-size: 19px; }
   .delete-dialog-backdrop { padding: 14px; align-items: end; }
   .delete-dialog {
     width: 100%;
