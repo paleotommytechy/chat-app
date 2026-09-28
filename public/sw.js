@@ -1,3 +1,11 @@
+self.addEventListener("install", () => {
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
 self.addEventListener("push", (event) => {
   const fallback = {
     title: "New activity in Syncret",
@@ -28,6 +36,14 @@ self.addEventListener("push", (event) => {
 
       if (visibleClient) return;
 
+      if ("setAppBadge" in self.navigator) {
+        try {
+          await self.navigator.setAppBadge();
+        } catch {
+          // Badging is best-effort and should never block notification delivery.
+        }
+      }
+
       await self.registration.showNotification(payload.title, {
         body: payload.body,
         icon: "/syncret-logo.svg",
@@ -49,6 +65,14 @@ self.addEventListener("notificationclick", (event) => {
 
   event.waitUntil(
     (async () => {
+      if ("clearAppBadge" in self.navigator) {
+        try {
+          await self.navigator.clearAppBadge();
+        } catch {
+          // Ignore badge API failures.
+        }
+      }
+
       const windows = await self.clients.matchAll({
         type: "window",
         includeUncontrolled: true,
