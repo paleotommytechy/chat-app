@@ -36,6 +36,14 @@ import { decryptSensitiveFile, encryptSensitiveFile, isSensitiveEnvFile } from "
 
 type Channel = "general" | "screenshots" | "files";
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{
+    outcome: "accepted" | "dismissed";
+    platform: string;
+  }>;
+};
+
 type Message = {
   _id: string;
   sender: string;
@@ -254,6 +262,11 @@ export function Syncret() {
   const [notificationState, setNotificationState] = useState<
     "loading" | "off" | "on" | "blocked" | "unsupported" | "unconfigured"
   >("loading");
+  const [installPrompt, setInstallPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [isAppleMobile, setIsAppleMobile] = useState(false);
+  const [showInstallHelp, setShowInstallHelp] = useState(false);
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -269,6 +282,45 @@ export function Syncret() {
   const recordingStartedAtRef = useRef(0);
   const recordingTimerRef = useRef<number | null>(null);
   const discardRecordingRef = useRef(false);
+
+  useEffect(() => {
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+
+    const appleMobile =
+      /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+    setIsStandalone(standalone);
+    setIsAppleMobile(appleMobile);
+
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.register("/sw.js").catch((error) => {
+        console.warn("Syncret service worker registration failed", error);
+      });
+    }
+
+    const handleInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+
+    const handleInstalled = () => {
+      setInstallPrompt(null);
+      setIsStandalone(true);
+      setShowInstallHelp(false);
+      setStatus("Syncret has been installed on this device.");
+    };
+
+    window.addEventListener("beforeinstallprompt", handleInstallPrompt);
+    window.addEventListener("appinstalled", handleInstalled);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleInstallPrompt);
+      window.removeEventListener("appinstalled", handleInstalled);
+    };
+  }, []);
 
   useEffect(() => {
     const local = window.localStorage.getItem("syncret-session-token");
@@ -344,7 +396,7 @@ export function Syncret() {
 
     void (async () => {
       try {
-        const registration = await navigator.serviceWorker.register("/sw.js");
+        const registration = await navigator.serviceWorker.ready;
         const subscription = await registration.pushManager.getSubscription();
 
         if (cancelled) return;
@@ -501,6 +553,38 @@ export function Syncret() {
     setToken(null);
   }
 
+  async function installSyncret() {
+    if (isStandalone) {
+      setStatus("Syncret is already installed on this device.");
+      return;
+    }
+
+    if (installPrompt) {
+      try {
+        await installPrompt.prompt();
+        const choice = await installPrompt.userChoice;
+
+        if (choice.outcome === "accepted") {
+          setStatus("Installing Syncret…");
+        }
+
+        setInstallPrompt(null);
+      } catch {
+        setStatus("Your browser couldn't start the Syncret installation.");
+      }
+      return;
+    }
+
+    if (isAppleMobile) {
+      setShowInstallHelp(true);
+      return;
+    }
+
+    setStatus(
+      "Use your browser menu and choose Install app or Add to Home screen.",
+    );
+  }
+
   async function enableNotifications() {
     if (!token) return;
 
@@ -527,12 +611,18 @@ export function Syncret() {
 
       const config = (await convex.query(api.notifications.config, {
         token,
-      })) as { enabled: boolean; publicKey: string | null };
+      })) as {
+        enabled: boolean;
+        publicKey: string | null;
+        missing: string[];
+      };
 
       if (!config.enabled || !config.publicKey) {
         setNotificationState("unconfigured");
         setStatus(
-          "Push notifications are not configured on the Syncret backend yet.",
+          config.missing?.length
+            ? `Push backend is deployed, but these Convex variables are missing: ${config.missing.join(", ")}.`
+            : "Push notifications are not configured on the Syncret backend yet.",
         );
         return;
       }
@@ -1200,6 +1290,68 @@ export function Syncret() {
         </div>
       )}
 
+      {showInstallHelp && (
+        <div
+          className="install-dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowInstallHelp(false);
+          }}
+        >
+          <section
+            className="install-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="install-dialog-title"
+          >
+            <button
+              type="button"
+              className="install-dialog-close"
+              onClick={() => setShowInstallHelp(false)}
+              aria-label="Close install instructions"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="install-dialog-logo">
+              <Image
+                src="/syncret-logo.svg"
+                alt=""
+                width={58}
+                height={58}
+              />
+            </div>
+
+            <span className="install-dialog-eyebrow">Install Syncret</span>
+            <h3 id="install-dialog-title">Add Syncret to your Home Screen</h3>
+            <p>
+              On iPhone or iPad, install Syncret first so it can behave like an
+              app and receive Web Push notifications.
+            </p>
+
+            <ol className="install-steps">
+              <li>
+                Tap the <strong>Share</strong> button in your browser.
+              </li>
+              <li>
+                Choose <strong>Add to Home Screen</strong>.
+              </li>
+              <li>
+                Open Syncret from the new Home Screen icon, sign in, then tap
+                <strong> Enable alerts</strong>.
+              </li>
+            </ol>
+
+            <button
+              type="button"
+              className="install-dialog-done"
+              onClick={() => setShowInstallHelp(false)}
+            >
+              Got it
+            </button>
+          </section>
+        </div>
+      )}
+
       {pendingDelete && (
         <div
           className="delete-dialog-backdrop"
@@ -1368,6 +1520,18 @@ export function Syncret() {
             <p>{channelMeta.subtitle}</p>
           </div>
           <div className="header-actions">
+            {!isStandalone && (installPrompt || isAppleMobile) && (
+              <button
+                type="button"
+                className="pwa-install-button"
+                onClick={() => void installSyncret()}
+                title="Install Syncret on this device"
+              >
+                <Download size={15} />
+                <span>Install Syncret</span>
+              </button>
+            )}
+
             <button
               type="button"
               className={`notification-toggle ${notificationState}`}
